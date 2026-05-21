@@ -7,6 +7,7 @@ import logging
 import os
 import secrets
 import uuid
+from datetime import datetime
 from typing import Optional, List
 
 from fastapi import APIRouter, Body, Depends, HTTPException, UploadFile, File, Form, Query
@@ -48,18 +49,15 @@ async def list_projects(db: Session = Depends(get_db)):
     return ProjectListResponse(projects=project_list, total=len(project_list))
 
 
-# ── POST /api/projects — create project (JSON body) ────────────────
+# ── POST /api/projects — create project (JSON body only) ────────────
 @router.post("/", response_model=ProjectResponse, status_code=201)
 async def create_project(
     body: ProjectCreateRequest = Body(...),
-    input_text: Optional[str] = Form(None),
-    images: Optional[List[UploadFile]] = File(None),
-    files: Optional[List[UploadFile]] = File(None),
     db: Session = Depends(get_db),
 ):
     """
-    Create a new project with optional files.
-    Accepts both JSON body (name/description) and multipart files.
+    Create a new project from JSON body.
+    Files are uploaded separately via POST /api/projects/{id}/upload.
     """
     project = Project(
         id=str(uuid.uuid4()),
@@ -67,65 +65,13 @@ async def create_project(
         description=body.description,
         access_token=_generate_access_token(),
         status="pending",
-        input_text=input_text,
+        input_text=body.input_text,
     )
     db.add(project)
-    db.flush()
-
-    # Save images
-    if images:
-        for img_file in images:
-            if not img_file.filename:
-                continue
-            storage_filename, storage_path, file_size = await save_upload_file(
-                img_file, project.id, file_type="image"
-            )
-            compress_image(storage_path)
-            width, height = get_image_dimensions(storage_path)
-            db.add(ProjectImage(
-                id=str(uuid.uuid4()),
-                project_id=project.id,
-                original_filename=img_file.filename,
-                storage_path=storage_path,
-                file_size=file_size,
-                width=width,
-                height=height,
-            ))
-
-    # Save text files
-    if files:
-        for txt_file in files:
-            if not txt_file.filename:
-                continue
-            original_name = txt_file.filename or "unnamed"
-            file_type = original_name.rsplit(".", 1)[-1].lower() if "." in original_name else "txt"
-            storage_filename, storage_path, file_size = await save_upload_file(
-                txt_file, project.id, file_type="file"
-            )
-            try:
-                extracted = extract_text(storage_path, file_type)
-            except ValueError:
-                extracted = ""
-            db.add(ProjectFile(
-                id=str(uuid.uuid4()),
-                project_id=project.id,
-                original_filename=original_name,
-                storage_path=storage_path,
-                file_type=file_type,
-                extracted_text=extracted,
-                file_size=file_size,
-            ))
-
     db.commit()
     db.refresh(project)
 
-    # Enqueue async analysis
-    try:
-        from ..tasks.analysis import run_analysis_task
-        run_analysis_task.delay(str(project.id))
-    except Exception as e:
-        logger.error(f"Failed to enqueue Celery task: {e}")
-
+    logger.info(f"Project created: id={project.id}, name={project.name}, input_text={'yes' if body.input_text else 'no'}")
     return _project_to_response(project)
 
 
@@ -138,6 +84,37 @@ async def delete_project(project_id: str, db: Session = Depends(get_db)):
     db.delete(project)
     db.commit()
     return {"detail": "ok"}
+
+
+# ── POST /api/projects/:id/stop — stop analysis ────────────────────
+@router.post("/{project_id}/stop")
+async def stop_analysis(project_id: str, db: Session = Depends(get_db)):
+    """停止正在分析的项目"""
+    project = db.query(Project).filter(Project.id == project_id).first()
+    if not project:
+        raise HTTPException(status_code=404, detail="项目不存在")
+
+    if project.status != "analyzing":
+        raise HTTPException(status_code=409, detail="项目未在分析中")
+
+    project.status = "pending"
+    project.updated_at = datetime.utcnow()
+
+    # 标记最近的 analyzing/pending analysis 为 failed
+    analysis = (
+        db.query(Analysis)
+        .filter(Analysis.project_id == project_id, Analysis.status.in_(["processing", "pending"]))
+        .order_by(Analysis.created_at.desc())
+        .first()
+    )
+    if analysis:
+        analysis.status = "failed"
+        analysis.error_message = "用户手动停止"
+        analysis.completed_at = datetime.utcnow()
+
+    db.commit()
+    logger.info(f"Analysis stopped for project={project_id}")
+    return {"detail": "ok", "status": "pending"}
 
 
 # ── GET /api/projects/:id — project detail ─────────────────────────
@@ -287,28 +264,117 @@ async def get_analysis(project_id: str, db: Session = Depends(get_db)):
     )
 
 
-# ── GET /api/projects/:id/analyze/stream — SSE analysis stream ─────
-@router.get("/{project_id}/analyze/stream")
-async def stream_analysis(project_id: str, db: Session = Depends(get_db)):
+# ── POST /api/projects/:id/analyze — trigger analysis ─────────────
+@router.post("/{project_id}/analyze")
+async def trigger_analysis(project_id: str, db: Session = Depends(get_db)):
+    """启动分析任务（Celery 异步执行）"""
     project = db.query(Project).filter(Project.id == project_id).first()
     if not project:
         raise HTTPException(status_code=404, detail="项目不存在")
 
-    queue = sse_manager.subscribe(project_id)
+    # 检查是否已有可分析的内容
+    from ..services.analysis_engine import _validate_input
+    images = db.query(ProjectImage).filter(
+        ProjectImage.project_id == project_id,
+    ).all()
+    files = db.query(ProjectFile).filter(
+        ProjectFile.project_id == project_id,
+    ).all()
+    has_images = len(images) > 0
+    has_files = len(files) > 0
+    has_input_text = bool(project.input_text and project.input_text.strip())
+
+    try:
+        _validate_input(has_images=has_images, has_file_texts=has_files, has_input_text=has_input_text)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    if project.status == "analyzing":
+        raise HTTPException(status_code=409, detail="正在分析中，请稍候")
+
+    # 更新状态 → analyzing
+    project.status = "analyzing"
+    project.updated_at = datetime.utcnow()
+    db.commit()
+
+    # 入队 Celery 任务
+    try:
+        from ..tasks.analysis import run_analysis_task
+        run_analysis_task.delay(project_id)
+        logger.info(f"Analysis task enqueued for project={project_id}")
+    except Exception as e:
+        logger.error(f"Failed to enqueue analysis task: {e}")
+        project.status = "pending"
+        db.commit()
+        raise HTTPException(status_code=500, detail=f"无法启动分析任务: {e}")
+
+    return {"detail": "ok", "status": "analyzing"}
+
+
+# ── GET /api/projects/:id/analyze/stream — SSE via DB polling ─────
+@router.get("/{project_id}/analyze/stream")
+async def stream_analysis(project_id: str):
+    """
+    SSE 端点：轮询数据库状态并推送事件。
+    使用 DB 轮询而非内存队列，确保 Celery worker 写入的状态能被 SS 端点读到。
+    """
+    import json as json_module
+    from ..core.database import SessionLocal
+    from ..models.analysis import Analysis as AnalysisModel
 
     async def event_generator():
+        sse_db = SessionLocal()
+        logger.info(f"SSE stream started for project={project_id}")
         try:
-            yield f"event: status_change\ndata: {{\"project_id\":\"{project_id}\",\"status\":\"{project.status}\",\"message\":\"已连接\"}}\n\n"
-            while True:
-                try:
-                    sse_message = await asyncio.wait_for(queue.get(), timeout=30.0)
-                    yield sse_message
-                except asyncio.TimeoutError:
-                    yield f": heartbeat\n\n"
-        except asyncio.CancelledError:
-            pass
+            project = sse_db.query(Project).filter(Project.id == project_id).first()
+            if not project:
+                yield f"event: failed\ndata: {json_module.dumps({'error': '项目不存在'}, ensure_ascii=False)}\n\n"
+                return
+
+            last_status = project.status
+            logger.info(f"SSE initial status: project={project_id}, status={last_status}")
+
+            # 发送连接确认
+            yield f"event: progress\ndata: {json_module.dumps({'progress': 5, 'message': '已连接，等待分析完成...'}, ensure_ascii=False)}\n\n"
+
+            # 轮询状态变化
+            retry_count = 0
+            max_retries = 150  # 5 minutes max (150 * 2s)
+            while last_status in ("analyzing", "parsing"):
+                await asyncio.sleep(2)
+                retry_count += 1
+                if retry_count > max_retries:
+                    yield f"event: failed\ndata: {json_module.dumps({'error': '分析超时，请重试'}, ensure_ascii=False)}\n\n"
+                    return
+
+                sse_db.refresh(project)
+                if project.status != last_status:
+                    logger.info(f"SSE status change: project={project_id}, {last_status} → {project.status}")
+                    last_status = project.status
+                    if last_status == "analyzing":
+                        yield f"event: progress\ndata: {json_module.dumps({'progress': 30, 'message': 'AI 分析中，请稍候...'}, ensure_ascii=False)}\n\n"
+                    elif last_status == "completed":
+                        yield f"event: progress\ndata: {json_module.dumps({'progress': 90, 'message': '正在保存结果...'}, ensure_ascii=False)}\n\n"
+                    elif last_status == "failed":
+                        yield f"event: failed\ndata: {json_module.dumps({'error': '分析失败，请查看详情'}, ensure_ascii=False)}\n\n"
+                        return
+
+            # 最终状态
+            if last_status == "completed":
+                yield f"event: completed\ndata: {json_module.dumps({'progress': 100, 'message': '分析完成！'}, ensure_ascii=False)}\n\n"
+                logger.info(f"SSE completed for project={project_id}")
+            elif last_status == "failed":
+                yield f"event: failed\ndata: {json_module.dumps({'error': '分析失败'}, ensure_ascii=False)}\n\n"
+            elif last_status == "pending":
+                yield f"event: stopped\ndata: {json_module.dumps({'message': '分析已停止'}, ensure_ascii=False)}\n\n"
+                logger.info(f"SSE stopped for project={project_id}")
+
+        except Exception as e:
+            logger.exception(f"SSE stream error for project={project_id}: {e}")
+            yield f"event: failed\ndata: {json_module.dumps({'error': f'连接异常: {str(e)}'}, ensure_ascii=False)}\n\n"
         finally:
-            sse_manager.unsubscribe(project_id, queue)
+            sse_db.close()
+            logger.info(f"SSE stream closed for project={project_id}")
 
     return StreamingResponse(
         event_generator(),

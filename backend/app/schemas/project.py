@@ -12,6 +12,7 @@ class ProjectCreateRequest(BaseModel):
     """创建项目请求体"""
     name: str = Field(..., max_length=255, description="项目名称")
     description: Optional[str] = Field(default=None, max_length=500, description="项目描述")
+    input_text: Optional[str] = Field(default=None, max_length=2000, description="补充文本说明")
 
 
 class ProjectStatusResponse(BaseModel):

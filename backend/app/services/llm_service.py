@@ -5,6 +5,7 @@ LLM Service — 多模态大模型调用服务
 
 import asyncio
 import base64
+import logging
 import time
 from typing import Optional
 
@@ -12,6 +13,8 @@ from openai import AsyncOpenAI
 import google.generativeai as genai
 
 from ..core.config import settings
+
+logger = logging.getLogger(__name__)
 
 
 # ============================================================
@@ -25,7 +28,7 @@ TIMEOUT_SECONDS = 120
 
 # 模型名称
 OPENAI_MODEL = "gpt-4o"
-GEMINI_MODEL = "gemini-2.5-pro-exp-03-25"
+GEMINI_MODEL = "gemini-2.5-flash"
 
 
 # ============================================================
@@ -207,29 +210,23 @@ async def _call_gemini(
         temperature=0.3,
     )
 
-    model_kwargs: dict = {
-        "model": GEMINI_MODEL,
-        "contents": parts,
-        "generation_config": generation_config,
-    }
-
-    # 系统提示词（Gemini SDK 支持 system_instruction 参数）
-    if system_prompt:
-        model_kwargs["system_instruction"] = system_prompt
-
-    # 如果启用联网搜索，添加工具
-    if enable_web_search:
-        model_kwargs["tools"] = [{"google_search": {}}]
-
     # 调用 Gemini（同步方式，在 asyncio executor 中运行）
     loop = asyncio.get_event_loop()
-    model = genai.GenerativeModel(GEMINI_MODEL)
+    model = genai.GenerativeModel(
+        GEMINI_MODEL,
+        system_instruction=system_prompt if system_prompt else None,
+    )
+
+    generate_kwargs: dict = {}
+    if enable_web_search:
+        generate_kwargs["tools"] = [{"google_search": {}}]
 
     response = await loop.run_in_executor(
         None,
         lambda: model.generate_content(
             parts,
             generation_config=generation_config,
+            **generate_kwargs,
         ),
     )
 
@@ -346,6 +343,11 @@ async def _retry_with_backoff(
 
     for attempt in range(MAX_RETRIES):
         try:
+            logger.info(
+                "[LLM] 调用 %s (第 %d/%d 次), images=%d, search=%s",
+                model_name, attempt + 1, MAX_RETRIES,
+                len(images_base64), enable_web_search,
+            )
             result = await asyncio.wait_for(
                 caller_func(
                     system_prompt,
@@ -357,6 +359,10 @@ async def _retry_with_backoff(
             )
 
             if result and result.strip():
+                logger.info(
+                    "[LLM] %s 调用成功, 响应长度=%d",
+                    model_name, len(result),
+                )
                 return result
 
             # 空响应也视为失败
@@ -364,14 +370,21 @@ async def _retry_with_backoff(
 
         except asyncio.TimeoutError:
             last_error = TimeoutError(f"{model_name} 调用超时（{TIMEOUT_SECONDS}s）")
+            logger.warning("[LLM] %s 超时 (attempt %d)", model_name, attempt + 1)
         except Exception as e:
             last_error = e
+            logger.warning(
+                "[LLM] %s 调用异常 (attempt %d): %s",
+                model_name, attempt + 1, str(e),
+            )
 
         # 最后一次尝试不等待
         if attempt < MAX_RETRIES - 1:
             delay = BASE_DELAY * (2 ** attempt)
+            logger.info("[LLM] 等待 %.0fs 后重试...", delay)
             await asyncio.sleep(delay)
 
+    logger.error("[LLM] %s 所有重试均失败: %s", model_name, last_error)
     raise RuntimeError(
         f"{model_name} 调用失败（重试 {MAX_RETRIES} 次后）: {last_error}"
     ) from last_error

@@ -3,7 +3,10 @@ Analysis Engine — 分析引擎编排层
 流程控制：预处理 → Prompt 构建 → LLM 调用 → JSON 校验 → 结果存储
 """
 
+import asyncio
 import base64
+import concurrent.futures
+import logging
 import os
 from typing import Optional
 from datetime import datetime
@@ -21,6 +24,8 @@ from .file_parser import extract_text as parse_file_text
 from .prompt_builder import build_system_prompt
 from .llm_service import analyze_design
 from .json_validator import validate_and_repair
+
+logger = logging.getLogger(__name__)
 
 
 class InputValidationError(ValueError):
@@ -74,16 +79,20 @@ def run_analysis_sync(project_id: str) -> dict:
         # 加载图片
         images = db.query(ProjectImage).filter(
             ProjectImage.project_id == project_id,
-            ProjectImage.deleted_at.is_(None),
         ).all()
 
         # 加载文件
         files = db.query(ProjectFile).filter(
             ProjectFile.project_id == project_id,
-            ProjectFile.deleted_at.is_(None),
         ).all()
 
         # Step 2: 预处理
+        logger.info(
+            "[AnalysisEngine] 开始预处理 project=%s, images=%d, files=%d, input_text=%s",
+            project_id, len(images), len(files),
+            "有" if project.input_text else "无",
+        )
+
         # 图片：读取并压缩
         images_base64: list[str] = []
         for img in images:
@@ -105,7 +114,7 @@ def run_analysis_sync(project_id: str) -> dict:
             if os.path.exists(file_path):
                 try:
                     # 根据文件扩展名确定类型
-                    ext = os.path.splitext(f.original_name)[1].lstrip(".").lower()
+                    ext = os.path.splitext(f.original_filename)[1].lstrip(".").lower()
                     text = parse_file_text(file_path, ext)
                     if text:
                         extracted_texts.append(text)
@@ -117,6 +126,11 @@ def run_analysis_sync(project_id: str) -> dict:
 
         # 用户补充文本
         input_text = project.input_text
+
+        logger.info(
+            "[AnalysisEngine] 预处理完成 project=%s, valid_images=%d, extracted_texts=%d",
+            project_id, len(images_base64), len(extracted_texts),
+        )
 
         # Step 3: 输入校验
         _validate_input(
@@ -133,16 +147,19 @@ def run_analysis_sync(project_id: str) -> dict:
         db.add(analysis)
         db.flush()  # 获取 analysis.id
 
+        logger.info(
+            "[AnalysisEngine] 开始 LLM 分析 analysis_id=%s, provider=%s",
+            analysis.id, settings.AI_MODEL_PROVIDER,
+        )
+
         # Step 4: 构建系统提示词
         system_prompt = build_system_prompt(settings.ENABLE_WEB_SEARCH)
 
         # Step 5: 调用 LLM（同步包装异步调用）
-        import asyncio
         try:
             loop = asyncio.get_event_loop()
             if loop.is_running():
                 # 在已运行的事件循环中（如 Celery 使用了 asyncio）
-                import concurrent.futures
                 with concurrent.futures.ThreadPoolExecutor() as executor:
                     llm_response = executor.submit(
                         lambda: asyncio.run(
@@ -174,6 +191,11 @@ def run_analysis_sync(project_id: str) -> dict:
                 )
             )
 
+        logger.info(
+            "[AnalysisEngine] LLM 响应长度=%d",
+            len(llm_response) if llm_response else 0,
+        )
+
         # Step 6: JSON 校验与修复
         result_data, error_msg = validate_and_repair(llm_response)
 
@@ -182,10 +204,19 @@ def run_analysis_sync(project_id: str) -> dict:
             analysis.raw_result_json = result_data
             analysis.status = "completed"
             analysis.completed_at = datetime.utcnow()
+            logger.info(
+                "[AnalysisEngine] 分析完成 analysis_id=%s, problems=%d",
+                analysis.id,
+                len(result_data.get("problems", [])),
+            )
         else:
             analysis.error_message = error_msg or "JSON 校验失败"
             analysis.status = "failed"
             analysis.completed_at = datetime.utcnow()
+            logger.error(
+                "[AnalysisEngine] JSON 校验失败 analysis_id=%s: %s",
+                analysis.id, error_msg,
+            )
 
         db.commit()
         db.refresh(analysis)
@@ -200,6 +231,7 @@ def run_analysis_sync(project_id: str) -> dict:
 
     except InputValidationError as e:
         # 输入校验失败
+        logger.warning("[AnalysisEngine] 输入校验失败 project=%s: %s", project_id, e)
         if analysis:
             analysis.status = "failed"
             analysis.error_message = str(e)
@@ -213,6 +245,10 @@ def run_analysis_sync(project_id: str) -> dict:
         }
 
     except Exception as e:
+        logger.error(
+            "[AnalysisEngine] 分析异常 project=%s: %s",
+            project_id, str(e),
+        )
         db.rollback()
 
         if analysis:

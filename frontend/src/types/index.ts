@@ -3,6 +3,9 @@ export interface Project {
   id: string;
   name: string;
   description?: string;
+  input_text?: string;
+  image_count: number;
+  file_count: number;
   status: 'pending' | 'parsing' | 'analyzing' | 'completed' | 'failed';
   created_at: string;
   updated_at: string;

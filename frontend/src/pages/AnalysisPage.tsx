@@ -6,7 +6,7 @@ import type { AnalysisResult, PitfallItem, PitfallSeverity } from '../types'
 const API = '/api'
 
 const severityConfig: Record<PitfallSeverity, { icon: typeof AlertTriangle; color: string; bg: string; label: string }> = {
-  critical: { icon: Zap, color: 'text-red-600', bg: 'bg-red-50 border-red-200', label: '嚴重' },
+  critical: { icon: Zap, color: 'text-red-600', bg: 'bg-red-50 border-red-200', label: '严重' },
   high: { icon: AlertTriangle, color: 'text-orange-600', bg: 'bg-orange-50 border-orange-200', label: '高' },
   medium: { icon: AlertCircle, color: 'text-yellow-600', bg: 'bg-yellow-50 border-yellow-200', label: '中' },
   low: { icon: Info, color: 'text-blue-600', bg: 'bg-blue-50 border-blue-200', label: '低' },
@@ -23,8 +23,8 @@ export default function AnalysisPage() {
     try {
       const res = await fetch(`${API}/projects/${projectId}/analysis`)
       if (res.ok) setResult(await res.json())
-      else setError('無法載入分析結果')
-    } catch { setError('載入失敗') }
+      else setError('无法加载分析结果')
+    } catch { setError('加载失败') }
     finally { setLoading(false) }
   }, [projectId])
 
@@ -37,10 +37,10 @@ export default function AnalysisPage() {
   if (error || !result) {
     return (
       <div className="max-w-6xl mx-auto px-4 py-8">
-        <Link to={`/project/${projectId}`} className="text-slate-400 hover:text-slate-600 no-underline flex items-center gap-2 mb-6"><ArrowLeft className="w-4 h-4" /> 返回專案</Link>
+        <Link to={`/project/${projectId}`} className="text-slate-400 hover:text-slate-600 no-underline flex items-center gap-2 mb-6"><ArrowLeft className="w-4 h-4" /> 返回项目</Link>
         <div className="bg-white rounded-xl border border-slate-200 p-10 text-center text-slate-400">
           <AlertTriangle className="w-10 h-10 mx-auto mb-3 text-yellow-500" />
-          <p>{error || '尚無分析結果，請先上傳檔案並開始分析'}</p>
+          <p>{error || '尚无分析结果，请先上传文件并开始分析'}</p>
         </div>
       </div>
     )
@@ -54,12 +54,12 @@ export default function AnalysisPage() {
       <div className="flex items-center gap-3 mb-6">
         <Link to={`/project/${projectId}`} className="text-slate-400 hover:text-slate-600 no-underline"><ArrowLeft className="w-5 h-5" /></Link>
         <div>
-          <h1 className="text-2xl font-bold text-slate-800">分析結果</h1>
-          <p className="text-slate-500 text-sm mt-0.5">AI 檢測到的裝修陷阱總覽</p>
+          <h1 className="text-2xl font-bold text-slate-800">分析结果</h1>
+          <p className="text-slate-500 text-sm mt-0.5">AI 检测到的装修陷阱总览</p>
         </div>
         <div className="ml-auto">
           <Link to={`/project/${projectId}/report`} className="flex items-center gap-2 px-4 py-2.5 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 no-underline">
-            <Download className="w-4 h-4" /> 下載報告
+            <Download className="w-4 h-4" /> 下载报告
           </Link>
         </div>
       </div>
@@ -67,7 +67,7 @@ export default function AnalysisPage() {
       {/* Summary Cards */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-8">
         <div className="bg-white rounded-xl border border-slate-200 p-4">
-          <p className="text-xs text-slate-400 mb-1">總陷阱數</p>
+          <p className="text-xs text-slate-400 mb-1">总陷阱数</p>
           <p className="text-2xl font-bold text-slate-800">{summary.total_pitfalls}</p>
         </div>
         {(['critical', 'high', 'medium', 'low'] as PitfallSeverity[]).map((s) => {
@@ -86,7 +86,7 @@ export default function AnalysisPage() {
       {/* Score */}
       <div className="bg-white rounded-xl border border-slate-200 p-5 mb-8">
         <div className="flex items-center justify-between mb-2">
-          <h2 className="text-sm font-semibold text-slate-700">綜合評分</h2>
+          <h2 className="text-sm font-semibold text-slate-700">综合评分</h2>
           <span className={`text-lg font-bold ${summary.score >= 80 ? 'text-green-600' : summary.score >= 60 ? 'text-yellow-600' : 'text-red-600'}`}>{summary.score} 分</span>
         </div>
         <div className="w-full h-3 bg-slate-100 rounded-full overflow-hidden">
@@ -96,14 +96,14 @@ export default function AnalysisPage() {
           />
         </div>
         <p className="text-xs text-slate-400 mt-2">
-          {summary.score >= 80 ? '整體設計良好，僅有少量改進空間' : summary.score >= 60 ? '存在部分問題，建議優化後再施工' : '存在較多隱患，建議重新審視設計'}
+          {summary.score >= 80 ? '整体设计良好，仅有少量改进空间' : summary.score >= 60 ? '存在部分问题，建议优化后再施工' : '存在较多隐患，建议重新审视设计'}
         </p>
       </div>
 
       {/* Pitfall List */}
       <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
         <div className="px-5 py-3 border-b border-slate-100 bg-slate-50">
-          <h2 className="text-sm font-semibold text-slate-700">問題詳情（{pitfalls.length}）</h2>
+          <h2 className="text-sm font-semibold text-slate-700">问题详情（{pitfalls.length}）</h2>
         </div>
         <div className="divide-y divide-slate-100">
           {pitfalls.map((item) => (
@@ -133,10 +133,10 @@ function PitfallCard({ item }: { item: PitfallItem }) {
           </div>
           <p className="text-sm text-slate-700 font-medium">{item.description}</p>
           <div className="mt-2 p-2.5 bg-slate-50 rounded-lg">
-            <p className="text-xs text-slate-500"><span className="font-medium text-green-600">✓ 建議：</span>{item.suggestion}</p>
+            <p className="text-xs text-slate-500"><span className="font-medium text-green-600">✓ 建议：</span>{item.suggestion}</p>
           </div>
           {item.regulation_ref && (
-            <p className="text-xs text-slate-400 mt-1.5">📋 法規參考：{item.regulation_ref}</p>
+            <p className="text-xs text-slate-400 mt-1.5">📋 法规参考：{item.regulation_ref}</p>
           )}
         </div>
       </div>
