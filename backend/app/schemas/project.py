@@ -9,12 +9,9 @@ from pydantic import BaseModel, Field
 
 
 class ProjectCreateRequest(BaseModel):
-    """创建项目请求体（文件通过 multipart/form-data 上传）"""
-    input_text: Optional[str] = Field(
-        default=None,
-        max_length=2000,
-        description="用户补充的文本描述（最多 2000 字符）",
-    )
+    """创建项目请求体"""
+    name: str = Field(..., max_length=255, description="项目名称")
+    description: Optional[str] = Field(default=None, max_length=500, description="项目描述")
 
 
 class ProjectStatusResponse(BaseModel):
@@ -29,7 +26,9 @@ class ProjectStatusResponse(BaseModel):
 class ProjectResponse(BaseModel):
     """项目详情响应"""
     id: str
-    access_token: str
+    name: str
+    description: Optional[str] = None
+    access_token: str = ""
     status: str
     input_text: Optional[str] = None
     image_count: int = 0

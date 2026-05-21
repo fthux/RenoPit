@@ -1,0 +1,11 @@
+.venv
+__pycache__
+*.pyc
+*.pyo
+.env
+.git
+*.md
+MemoryBank
+uploads/*
+reports/*
+*.db

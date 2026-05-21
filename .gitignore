@@ -1,0 +1,30 @@
+# Environment
+.env
+
+# Uploads & Reports (runtime data)
+uploads/
+reports/
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+
+# Backend
+backend/__pycache__/
+backend/**/__pycache__/
+*.pyc
+*.pyo
+backend/.venv/
+
+# IDE
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Database
+*.sqlite3
+
+# Docker
+docker-compose.override.yml

@@ -30,11 +30,15 @@ class AnalysisResponse(BaseModel):
     """分析结果响应"""
     id: str
     project_id: str
+    status: str = "pending"
+    problems_count: int = 0
+    result_json: Optional[Dict[str, Any]] = None
     raw_result_json: Optional[Dict[str, Any]] = Field(
         default=None,
         description="AI 返回的完整 JSON 结果，顶层含 problems 数组",
     )
     error_message: Optional[str] = None
+    completed_at: Optional[datetime] = None
     created_at: datetime
 
     model_config = {"from_attributes": True}

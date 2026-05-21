@@ -6,8 +6,7 @@ import uuid
 import secrets
 from datetime import datetime
 
-from sqlalchemy import Column, String, Text, DateTime, Index
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy import Column, String, Text, DateTime, Index, Uuid
 from sqlalchemy.orm import relationship
 
 from ..core.database import Base
@@ -24,7 +23,9 @@ def generate_access_token():
 class Project(Base):
     __tablename__ = "projects"
 
-    id = Column(UUID(as_uuid=False), primary_key=True, default=generate_uuid)
+    id = Column(Uuid(as_uuid=False), primary_key=True, default=generate_uuid)
+    name = Column(String(255), nullable=False, default="未命名專案")
+    description = Column(String(500), nullable=True)
     access_token = Column(String(64), nullable=False, default=generate_access_token)
     status = Column(String(20), nullable=False, default="pending")
     input_text = Column(Text, nullable=True)

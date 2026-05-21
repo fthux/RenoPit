@@ -6,7 +6,7 @@ celery==5.4.0
 redis==5.1.1
 python-multipart==0.0.12
 pillow==10.4.0
-fpdf2==2.7.9
+reportlab==4.5.1
 json-repair==0.25.0
 openai==1.50.0
 google-generativeai==0.8.0

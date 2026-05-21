@@ -6,7 +6,9 @@ from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
-    # 数据库
+    # 数据库 — 支持直接用 DATABASE_URL 覆盖（便于测试用 SQLite）
+    DATABASE_URL: str = ""
+
     DB_HOST: str = "localhost"
     DB_PORT: int = 5432
     DB_USER: str = "renovate"
@@ -14,7 +16,9 @@ class Settings(BaseSettings):
     DB_NAME: str = "renovate_db"
 
     @property
-    def DATABASE_URL(self) -> str:
+    def DB_URL(self) -> str:
+        if self.DATABASE_URL:
+            return self.DATABASE_URL
         return (
             f"postgresql+psycopg://{self.DB_USER}:{self.DB_PASSWORD}"
             f"@{self.DB_HOST}:{self.DB_PORT}/{self.DB_NAME}"

@@ -1,0 +1,90 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: ${DB_USER:-renovate}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-renovate123}
+      POSTGRES_DB: ${DB_NAME:-renovate_db}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "${DB_PORT:-5432}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-renovate} -d ${DB_NAME:-renovate_db}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build: ./backend
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000
+    environment:
+      - DATABASE_URL=postgresql+psycopg://${DB_USER:-renovate}:${DB_PASSWORD:-renovate123}@db:5432/${DB_NAME:-renovate_db}
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - AI_MODEL_PROVIDER=${AI_MODEL_PROVIDER:-openai}
+      - MAX_UPLOAD_SIZE=${MAX_UPLOAD_SIZE:-20971520}
+      - MAX_TEXT_FILE_SIZE=${MAX_TEXT_FILE_SIZE:-5242880}
+      - MAX_INPUT_TEXT_LENGTH=${MAX_INPUT_TEXT_LENGTH:-2000}
+      - FONT_PATH=${FONT_PATH:-/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc}
+      - ENABLE_WEB_SEARCH=${ENABLE_WEB_SEARCH:-true}
+    volumes:
+      - uploads:/app/uploads
+      - reports:/app/reports
+    ports:
+      - "${BACKEND_PORT:-8000}:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  celery_worker:
+    build: ./backend
+    command: celery -A app.tasks.celery_app worker --loglevel=info
+    environment:
+      - DATABASE_URL=postgresql+psycopg://${DB_USER:-renovate}:${DB_PASSWORD:-renovate123}@db:5432/${DB_NAME:-renovate_db}
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - AI_MODEL_PROVIDER=${AI_MODEL_PROVIDER:-openai}
+      - MAX_UPLOAD_SIZE=${MAX_UPLOAD_SIZE:-20971520}
+      - MAX_TEXT_FILE_SIZE=${MAX_TEXT_FILE_SIZE:-5242880}
+      - MAX_INPUT_TEXT_LENGTH=${MAX_INPUT_TEXT_LENGTH:-2000}
+      - FONT_PATH=${FONT_PATH:-/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc}
+      - ENABLE_WEB_SEARCH=${ENABLE_WEB_SEARCH:-true}
+    volumes:
+      - uploads:/app/uploads
+      - reports:/app/reports
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "${FRONTEND_PORT:-3000}:80"
+    depends_on:
+      - backend
+
+volumes:
+  postgres_data:
+  uploads:
+  reports:

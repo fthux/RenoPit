@@ -5,8 +5,7 @@ ProjectFile 模型 — 项目文本文件关联表（一对多）
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Column, String, Integer, DateTime, Text, ForeignKey, Index
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy import Column, String, Integer, DateTime, Text, ForeignKey, Index, Uuid
 from sqlalchemy.orm import relationship
 
 from ..core.database import Base
@@ -19,8 +18,8 @@ def generate_uuid():
 class ProjectFile(Base):
     __tablename__ = "project_files"
 
-    id = Column(UUID(as_uuid=False), primary_key=True, default=generate_uuid)
-    project_id = Column(UUID(as_uuid=False), ForeignKey("projects.id", ondelete="CASCADE"), nullable=False)
+    id = Column(Uuid(as_uuid=False), primary_key=True, default=generate_uuid)
+    project_id = Column(Uuid(as_uuid=False), ForeignKey("projects.id", ondelete="CASCADE"), nullable=False)
     original_filename = Column(String(500), nullable=False)
     storage_path = Column(String(500), nullable=False)
     file_type = Column(String(20), nullable=False)  # txt / md / docx / pdf
