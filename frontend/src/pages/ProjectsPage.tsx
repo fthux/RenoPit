@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Plus, FolderOpen, Loader2, Trash2, Upload, FileText, Image as ImageIcon, ArrowRight, Building2 } from 'lucide-react'
+import { Plus, FolderOpen, Loader2, Trash2, Clock, CheckCircle2, AlertCircle, FileText, Image, FileWarning } from 'lucide-react'
 import type { Project } from '../types'
 import ConfirmDialog from '../components/ConfirmDialog'
 
@@ -9,12 +9,6 @@ const API = '/api'
 export default function ProjectsPage() {
   const [projects, setProjects] = useState<Project[]>([])
   const [loading, setLoading] = useState(true)
-  const [creating, setCreating] = useState(false)
-  const [showCreate, setShowCreate] = useState(false)
-  const [name, setName] = useState('')
-  const [description, setDescription] = useState('')
-  const [selectedFiles, setSelectedFiles] = useState<File[]>([])
-  const [inputText, setInputText] = useState('')
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null)
   const navigate = useNavigate()
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
@@ -45,65 +39,6 @@ export default function ProjectsPage() {
     return () => { if (pollRef.current) clearInterval(pollRef.current) }
   }, [projects, fetchProjects])
 
-  function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
-    if (!e.target.files) return
-    const newFiles = Array.from(e.target.files)
-    setSelectedFiles((prev) => [...prev, ...newFiles])
-    e.target.value = ''
-  }
-
-  function removeFile(index: number) {
-    setSelectedFiles((prev) => prev.filter((_, i) => i !== index))
-  }
-
-  function formatSize(bytes: number): string {
-    if (bytes < 1024) return `${bytes} B`
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
-  }
-
-  const hasContent = selectedFiles.length > 0 || inputText.trim().length > 0
-  const canCreate = name.trim().length > 0 && !creating
-
-  async function createProject() {
-    if (!canCreate) return
-    setCreating(true)
-    try {
-      const createRes = await fetch(`${API}/projects`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: name.trim(),
-          description: description.trim() || undefined,
-          input_text: inputText.trim() || undefined,
-        }),
-      })
-      if (!createRes.ok) {
-        console.error('Failed to create project')
-        return
-      }
-      const p = await createRes.json()
-      const projectId = p.id
-
-      if (selectedFiles.length > 0) {
-        const formData = new FormData()
-        selectedFiles.forEach((f) => formData.append('files', f))
-        await fetch(`${API}/projects/${projectId}/upload`, {
-          method: 'POST',
-          body: formData,
-        })
-      }
-
-      setShowCreate(false)
-      setName('')
-      setDescription('')
-      setSelectedFiles([])
-      setInputText('')
-      navigate(`/project/${projectId}`)
-    } catch (err) { console.error(err) }
-    finally { setCreating(false) }
-  }
-
   async function deleteProject(id: string) {
     try {
       await fetch(`${API}/projects/${id}`, { method: 'DELETE' })
@@ -112,190 +47,183 @@ export default function ProjectsPage() {
     } catch (err) { console.error(err) }
   }
 
-  const statusLabel: Record<string, string> = {
-    pending: '待处理', parsing: '解析中', analyzing: '分析中', completed: '已完成', failed: '失败',
+  const statusConfig: Record<string, { label: string; icon: typeof Clock; className: string }> = {
+    pending: { label: '待处理', icon: Clock, className: 'text-slate-400 border-slate-200 bg-slate-50' },
+    parsing: { label: '解析中', icon: Loader2, className: 'text-yellow-600 border-yellow-200 bg-yellow-50' },
+    analyzing: { label: '分析中', icon: Loader2, className: 'text-blue-600 border-blue-200 bg-blue-50' },
+    completed: { label: '已完成', icon: CheckCircle2, className: 'text-emerald-600 border-emerald-200 bg-emerald-50' },
+    failed: { label: '失败', icon: AlertCircle, className: 'text-red-600 border-red-200 bg-red-50' },
   }
-  const statusColor: Record<string, string> = {
-    pending: 'bg-slate-100 text-slate-500', parsing: 'bg-yellow-100 text-yellow-700',
-    analyzing: 'bg-blue-100 text-blue-700', completed: 'bg-green-100 text-green-700',
-    failed: 'bg-red-100 text-red-700',
+
+  function formatDate(ts: string | undefined) {
+    if (!ts) return ''
+    const d = new Date(ts)
+    return d.toLocaleDateString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit' })
   }
+
+  const empty = !loading && projects.length === 0
+
+  const projectCards = !loading && projects.length > 0
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-100">
-      <div className="max-w-6xl mx-auto px-4 py-8">
+    <div className="min-h-screen bg-[#fcfcfd]">
+      <div className="max-w-5xl mx-auto px-6 py-14">
+
         {/* Header */}
-        <div className="flex items-center justify-between mb-8">
-          <div>
-            <h1 className="text-3xl font-bold text-slate-800 tracking-tight">我的项目</h1>
-            <p className="text-slate-500 text-sm mt-1.5">上传设计文件，AI 自动分析装修陷阱，规避施工风险</p>
-          </div>
-          <button onClick={() => setShowCreate(true)}
-            className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-blue-600 to-blue-500 text-white rounded-xl hover:from-blue-700 hover:to-blue-600 transition-all duration-300 text-sm font-medium shadow-lg shadow-blue-500/20 hover:shadow-blue-500/30 hover:scale-[1.02] active:scale-[0.98]">
-            <Plus className="w-4 h-4" /> 新建项目
-          </button>
+        <div className="mb-12">
+          <h1 className="text-4xl md:text-5xl font-bold text-slate-800 tracking-tight">
+            我的项目
+          </h1>
+          <div className="mt-3 h-1 w-16 rounded-full bg-gradient-to-r from-blue-500 to-purple-600" />
+          <p className="text-slate-500 text-lg mt-4 max-w-2xl leading-relaxed">
+            上传设计图纸或现场照片，AI 逐项审查装修陷阱，帮你守护每一分钱。
+          </p>
         </div>
 
-        {/* Create Form */}
-        {showCreate && (
-          <div className="mb-8 p-6 bg-white rounded-2xl border border-slate-200 shadow-xl shadow-slate-200/50 space-y-5">
-            <h2 className="text-lg font-semibold text-slate-800 flex items-center gap-2">
-              <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white text-xs font-bold">+</div>
-              新建项目
-            </h2>
-
-            <div>
-              <label className="block text-sm font-medium text-slate-600 mb-1.5">项目名称 *</label>
-              <input
-                className="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 bg-slate-50/50 transition-all"
-                placeholder="例如：主卧装修方案"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-slate-600 mb-1.5">描述（可选）</label>
-              <input
-                className="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 bg-slate-50/50 transition-all"
-                placeholder="简要描述你的装修需求"
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-slate-600 mb-1.5">
-                上传文件（可选）
-                <span className="text-slate-400 font-normal ml-1">支持图片、DXF、PDF 等设计文件</span>
-              </label>
-              <label className={`flex items-center gap-2 px-4 py-3.5 border-2 border-dashed rounded-xl cursor-pointer transition-all text-sm
-                ${selectedFiles.length > 0 ? 'border-blue-300 bg-blue-50/50 text-blue-600' : 'border-slate-200 bg-slate-50/50 text-slate-400 hover:border-slate-300 hover:text-slate-500'}`}>
-                <Upload className="w-4 h-4" />
-                {selectedFiles.length > 0 ? `已选择 ${selectedFiles.length} 个文件` : '点击选择文件'}
-                <input
-                  type="file"
-                  multiple
-                  accept=".dxf,.dwg,.pdf,.png,.jpg,.jpeg,.webp,.txt,.docx,.md"
-                  onChange={handleFileSelect}
-                  className="hidden"
-                />
-              </label>
-
-              {selectedFiles.length > 0 && (
-                <div className="mt-2 space-y-1 max-h-32 overflow-y-auto">
-                  {selectedFiles.map((f, i) => (
-                    <div key={i} className="flex items-center gap-2 px-3 py-1.5 bg-slate-50 rounded-lg text-sm">
-                      {f.type.startsWith('image/') ? (
-                        <ImageIcon className="w-3.5 h-3.5 text-purple-500 flex-shrink-0" />
-                      ) : (
-                        <FileText className="w-3.5 h-3.5 text-blue-500 flex-shrink-0" />
-                      )}
-                      <span className="text-slate-600 truncate flex-1">{f.name}</span>
-                      <span className="text-slate-400 text-xs flex-shrink-0">{formatSize(f.size)}</span>
-                      <button onClick={() => removeFile(i)} className="text-slate-300 hover:text-red-500 flex-shrink-0">
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-slate-600 mb-1.5">
-                补充文本说明（可选）
-                <span className="text-slate-400 font-normal ml-1">直接输入装修需求或注意事项</span>
-              </label>
-              <textarea
-                className="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 bg-slate-50/50 transition-all resize-none"
-                rows={3}
-                placeholder="例如：主卧需要独立衣帽间，卫生间要做干湿分离，厨房需要岛台..."
-                value={inputText}
-                onChange={(e) => setInputText(e.target.value)}
-                maxLength={2000}
-              />
-              <div className="text-right text-xs text-slate-400 mt-1">{inputText.length} / 2000</div>
-            </div>
-
-            <div className="flex gap-3 pt-1">
-              <button
-                onClick={createProject}
-                disabled={!canCreate}
-                className="px-5 py-2.5 bg-gradient-to-r from-blue-600 to-blue-500 text-white rounded-xl text-sm font-medium hover:from-blue-700 hover:to-blue-600 disabled:opacity-50 flex items-center gap-1.5 transition-all shadow-lg shadow-blue-500/20"
-              >
-                {creating && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-                创建项目
-              </button>
-              <button onClick={() => {
-                setShowCreate(false)
-                setSelectedFiles([])
-                setInputText('')
-              }} className="px-5 py-2.5 bg-slate-100 text-slate-600 rounded-xl text-sm font-medium hover:bg-slate-200 transition-all">
-                取消
-              </button>
-              {!hasContent && name.trim() && (
-                <span className="text-xs text-amber-600 self-center ml-2">提示：建议上传文件或输入文本描述以获得更准确的分析</span>
-              )}
+        {/* Loading State */}
+        {loading && (
+          <div className="flex items-center justify-center py-32">
+            <div className="flex flex-col items-center gap-4">
+              <Loader2 className="w-8 h-8 animate-spin text-blue-400" />
+              <span className="text-sm text-slate-400">加载中...</span>
             </div>
           </div>
         )}
 
-        {/* Project List */}
-        {loading ? (
-          <div className="flex items-center justify-center py-20">
-            <Loader2 className="w-8 h-8 animate-spin text-slate-300" />
-          </div>
-        ) : projects.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-20 text-slate-400">
-            <div className="w-16 h-16 rounded-2xl bg-slate-100 flex items-center justify-center mb-4">
-              <Building2 className="w-8 h-8 text-slate-300" />
-            </div>
-            <p className="text-lg font-medium text-slate-500">尚无项目</p>
-            <p className="text-sm text-slate-400 mt-1">点击"新建项目"开始分析你的设计</p>
-          </div>
-        ) : (
-          <div className="grid gap-3">
-            {projects.map((p) => (
-              <div key={p.id}>
-                <div
-                  className="group bg-white rounded-2xl border border-slate-200 px-6 py-5 flex items-center justify-between hover:shadow-lg hover:shadow-slate-200/50 transition-all duration-300 cursor-pointer hover:border-blue-200/50"
-                  onClick={() => navigate(`/project/${p.id}`)}
-                >
-                  <div className="flex items-center gap-4">
-                    <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-blue-50 to-blue-100 flex items-center justify-center text-blue-600 group-hover:scale-110 transition-transform duration-300">
-                      <FolderOpen className="w-6 h-6" />
-                    </div>
-                    <div>
-                      <p className="text-slate-800 font-semibold group-hover:text-blue-600 transition-colors">{p.name}</p>
-                      {p.description && <p className="text-slate-400 text-sm mt-0.5">{p.description}</p>}
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <span className={`px-3 py-1 rounded-full text-xs font-medium ${statusColor[p.status]}`}>
-                      {statusLabel[p.status] || p.status}
-                      {p.status === 'analyzing' && <Loader2 className="w-3 h-3 animate-spin inline ml-1" />}
-                    </span>
-                    <button
-                      onClick={(e) => { e.stopPropagation(); setDeleteConfirm(p.id) }}
-                      className="p-2 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                    <ArrowRight className="w-4 h-4 text-slate-300 group-hover:text-blue-400 group-hover:translate-x-1 transition-all" />
-                  </div>
-                </div>
-
-                <ConfirmDialog
-                  open={deleteConfirm === p.id}
-                  title="确认删除"
-                  message={`确定要删除项目「${p.name}」吗？此操作不可撤销。`}
-                  confirmLabel="删除"
-                  onConfirm={() => deleteProject(p.id)}
-                  onCancel={() => setDeleteConfirm(null)}
-                />
+        {/* Empty State */}
+        {empty && (
+          <div className="flex flex-col items-center py-32">
+            <div className="relative mb-8">
+              <div className="w-24 h-24 rounded-2xl bg-gradient-to-br from-blue-50 to-purple-50 border border-slate-100 flex items-center justify-center shadow-2xl shadow-slate-200/30">
+                <FileWarning className="w-10 h-10 text-slate-300" />
               </div>
-            ))}
+              <div className="absolute -top-2 -right-2 w-8 h-8 rounded-lg bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white text-xs font-bold shadow-lg shadow-blue-500/30">
+                ?
+              </div>
+            </div>
+            <h2 className="text-xl font-semibold text-slate-700 mb-2">还没有项目</h2>
+            <p className="text-slate-400 text-base mb-8 max-w-md text-center leading-relaxed">
+              上传你的设计文档或现场照片，AI 将在几分钟内帮你揪出藏在设计里的坑。
+            </p>
+            <button
+              onClick={() => navigate('/projects/new')}
+              className="flex items-center gap-2 px-7 py-3.5 bg-white border-2 border-slate-200 rounded-2xl text-slate-700 font-semibold hover:border-blue-300 hover:text-blue-600 hover:bg-blue-50/50 transition-all duration-300 shadow-lg shadow-slate-200/50 hover:shadow-xl hover:shadow-blue-200/30 active:scale-[0.98]"
+            >
+              <Plus className="w-5 h-5" />
+              创建第一个项目
+            </button>
+          </div>
+        )}
+
+        {/* Project Grid */}
+        {projectCards && (
+          <div>
+            {/* Stats Row */}
+            <div className="flex items-center justify-between mb-6">
+              <span className="text-sm text-slate-400">
+                共 {projects.length} 个项目
+              </span>
+              <button
+                onClick={() => navigate('/projects/new')}
+                className="flex items-center gap-2 px-5 py-2.5 bg-white border-2 border-slate-200 rounded-xl text-slate-600 font-medium text-sm hover:border-blue-300 hover:text-blue-600 hover:bg-blue-50/30 transition-all duration-300 active:scale-[0.97]"
+              >
+                <Plus className="w-4 h-4" />
+                新建项目
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+              {projects.map((p) => {
+                const st = statusConfig[p.status] || statusConfig.pending
+                const StatusIcon = st.icon
+                const isSpinning = p.status === 'parsing' || p.status === 'analyzing'
+
+                return (
+                  <div key={p.id}>
+                    <div
+                      className="group relative bg-white rounded-3xl border border-slate-100 p-6 hover:shadow-2xl hover:shadow-slate-200/40 hover:border-blue-100 hover:-translate-y-0.5 transition-all duration-500 cursor-pointer overflow-hidden"
+                      onClick={() => navigate(`/project/${p.id}`)}
+                    >
+                      {/* Hover glow */}
+                      <div className="absolute inset-0 rounded-3xl opacity-0 group-hover:opacity-100 transition-opacity duration-700 bg-gradient-to-br from-blue-50/40 via-transparent to-purple-50/40 pointer-events-none" />
+
+                      <div className="relative z-10">
+                        {/* Top: icon + name + status */}
+                        <div className="flex items-start justify-between mb-4">
+                          <div className="flex items-start gap-4">
+                            <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-blue-50 to-purple-50 border border-slate-100 flex items-center justify-center shadow-sm group-hover:shadow-md group-hover:scale-105 transition-all duration-500">
+                              <FolderOpen className="w-7 h-7 text-blue-500 group-hover:text-blue-600 transition-colors" />
+                            </div>
+                            <div className="pt-1">
+                              <h3 className="text-lg font-bold text-slate-800 group-hover:text-blue-600 transition-colors leading-snug">
+                                {p.name}
+                              </h3>
+                              {p.description && (
+                                <p className="text-sm text-slate-400 mt-0.5 line-clamp-2 max-w-[240px] leading-relaxed">
+                                  {p.description}
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                          <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-medium whitespace-nowrap ${st.className}`}>
+                            <StatusIcon className={`w-3.5 h-3.5 ${isSpinning ? 'animate-spin' : ''}`} />
+                            {st.label}
+                          </div>
+                        </div>
+
+                        {/* Bottom: meta + actions */}
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-4 text-xs text-slate-400">
+                            {p.file_count !== undefined && (
+                              <span className="flex items-center gap-1">
+                                <FileText className="w-3.5 h-3.5" />
+                                {p.file_count} 个文件
+                              </span>
+                            )}
+                            {p.image_count !== undefined && p.image_count > 0 && (
+                              <span className="flex items-center gap-1">
+                                <Image className="w-3.5 h-3.5" />
+                                {p.image_count} 张图片
+                              </span>
+                            )}
+                            {p.created_at && (
+                              <span className="flex items-center gap-1">
+                                <Clock className="w-3.5 h-3.5" />
+                                {formatDate(p.created_at)}
+                              </span>
+                            )}
+                          </div>
+
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={(e) => { e.stopPropagation(); setDeleteConfirm(p.id) }}
+                              className="p-2 text-slate-300 hover:text-red-400 hover:bg-red-50 rounded-xl transition-all opacity-0 group-hover:opacity-100"
+                              title="删除"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                            <div className="w-8 h-8 rounded-xl bg-slate-100 flex items-center justify-center group-hover:bg-blue-100 group-hover:text-blue-600 transition-all text-slate-300">
+                              <svg className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                              </svg>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <ConfirmDialog
+                      open={deleteConfirm === p.id}
+                      title="确认删除"
+                      message={`确定要删除项目「${p.name}」吗？此操作不可撤销。`}
+                      confirmLabel="删除"
+                      onConfirm={() => deleteProject(p.id)}
+                      onCancel={() => setDeleteConfirm(null)}
+                    />
+                  </div>
+                )
+              })}
+            </div>
           </div>
         )}
       </div>
