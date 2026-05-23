@@ -613,15 +613,42 @@ async def get_report_info(project_id: str, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="请先完成分析")
 
     result = analysis.raw_result_json or {}
-    summary_from_json = result.get("summary", {})
-    summary = {
-        "total_pitfalls": summary_from_json.get("total_pitfalls", 0),
-        "critical_count": summary_from_json.get("critical_count", 0),
-        "high_count": summary_from_json.get("high_count", 0),
-        "medium_count": summary_from_json.get("medium_count", 0),
-        "low_count": summary_from_json.get("low_count", 0),
-        "score": summary_from_json.get("score", 0),
-    }
+    problems = result.get("problems", [])
+    raw_summary = result.get("summary", {})
+
+    # Normalize summary: LLM output may be a string (old prompt) or dict
+    if isinstance(raw_summary, dict):
+        by_severity = raw_summary.get("by_severity", {})
+        if not isinstance(by_severity, dict):
+            by_severity = {}
+        summary = {
+            "total_pitfalls": raw_summary.get("total_pitfalls", raw_summary.get("total", len(problems))),
+            "critical_count": raw_summary.get("critical_count", by_severity.get("critical", 0)),
+            "high_count": raw_summary.get("high_count", by_severity.get("high", 0)),
+            "medium_count": raw_summary.get("medium_count", by_severity.get("medium", 0)),
+            "low_count": raw_summary.get("low_count", by_severity.get("low", 0)),
+            "score": raw_summary.get("score", 0),
+            "summary_text": raw_summary.get("overall_assessment", ""),
+        }
+    else:
+        # summary is a string (old prompt) - derive stats from problems
+        sev_count = {"critical": 0, "high": 0, "medium": 0, "low": 0}
+        for p in problems:
+            sev = p.get("severity", "low")
+            if sev in sev_count:
+                sev_count[sev] += 1
+        score = max(0, min(100, 100 - sum(
+            sev_count[s] * w for s, w in [("critical", 15), ("high", 8), ("medium", 3), ("low", 1)]
+        )))
+        summary = {
+            "total_pitfalls": len(problems),
+            "critical_count": sev_count["critical"],
+            "high_count": sev_count["high"],
+            "medium_count": sev_count["medium"],
+            "low_count": sev_count["low"],
+            "score": score,
+            "summary_text": raw_summary if isinstance(raw_summary, str) else "",
+        }
 
     return {
         "id": report_record.id if report_record else project_id,

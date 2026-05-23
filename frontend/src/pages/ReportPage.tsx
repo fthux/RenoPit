@@ -11,13 +11,15 @@ export default function ReportPage() {
   const [loading, setLoading] = useState(true)
   const [downloading, setDownloading] = useState(false)
   const [error, setError] = useState('')
-
+  console.error("adfadfadfadfadf");
   const fetchReport = useCallback(async () => {
     setLoading(true)
+    console.error("hello world");
     try {
       const res = await fetch(`${API}/projects/${projectId}/report`)
-      if (res.ok) setReport(await res.json())
-      else setError('尚无报告，请先完成分析')
+      // if (res.ok) setReport(await res.json())
+      // else setError('尚无报告，请先完成分析')
+      setReport(await res.json())
     } catch {
       setError('加载失败')
     } finally {

@@ -17,6 +17,30 @@ export default function AnalysisPage() {
   const [result, setResult] = useState<AnalysisResult | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [downloading, setDownloading] = useState(false)
+
+  const handleDownloadPdf = useCallback(async () => {
+    if (!projectId) return
+    setDownloading(true)
+    try {
+      const res = await fetch(`/api/projects/${projectId}/report/pdf`)
+      if (!res.ok) throw new Error('下载失败')
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `renovation-report-${projectId.slice(0, 8)}.pdf`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+    } catch (e) {
+      console.error('PDF download failed:', e)
+      alert('PDF 下载失败，请稍后重试')
+    } finally {
+      setDownloading(false)
+    }
+  }, [projectId])
 
   const fetchAnalysis = useCallback(async () => {
     setLoading(true)
@@ -101,9 +125,10 @@ export default function AnalysisPage() {
           <h1 className="text-3xl font-bold text-slate-800 tracking-tight">分析结果</h1>
           <p className="text-slate-500 text-sm mt-1.5">AI 检测到的装修陷阱总览</p>
         </div>
-        <Link to={`/project/${projectId}/report`} className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-green-600 to-emerald-500 text-white rounded-xl text-sm font-medium hover:from-green-700 hover:to-emerald-600 no-underline transition-all hover:scale-[1.02] active:scale-[0.98] shadow-lg shadow-green-500/20">
-          <Download className="w-4 h-4" /> 下载报告
-        </Link>
+        <button onClick={handleDownloadPdf} disabled={downloading} className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-green-600 to-emerald-500 text-white rounded-xl text-sm font-medium hover:from-green-700 hover:to-emerald-600 no-underline transition-all hover:scale-[1.02] active:scale-[0.98] shadow-lg shadow-green-500/20 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100">
+          {downloading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+          {downloading ? '下载中...' : '下载报告'}
+        </button>
       </div>
 
       {/* Summary Cards */}
