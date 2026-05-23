@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useParams, Link, useNavigate } from 'react-router-dom'
-import { ArrowLeft, Upload, FileText, Image, Play, Download, Loader2, CheckCircle2, Square } from 'lucide-react'
+import { ArrowLeft, Upload, FileText, Image, Play, Download, Loader2, CheckCircle2, Square, ChevronRight, AlertCircle } from 'lucide-react'
 import type { Project, ProjectFile, ProjectImage } from '../types'
 import { useToast } from '../components/Toast'
 
@@ -71,13 +71,11 @@ export default function ProjectPage() {
             es?.close()
             fetchProject().then(p => p && setProject(p))
             showToast('success', '分析完成！正在跳转报告...')
-            // 自动跳转到结果页面
             setTimeout(() => navigate(`/project/${projectId}/analysis`), 800)
           })
           es.addEventListener('failed', (e) => {
             try {
               const msg = JSON.parse(e.data)
-              // 优先使用 error_detail (包含完整错误信息), 其次使用 error
               const errorMsg = msg.error_detail || msg.error || '分析失败'
               setSseMessage(errorMsg)
               showToast('error', errorMsg)
@@ -143,14 +141,12 @@ export default function ProjectPage() {
       es.close()
       fetchProject().then(p => p && setProject(p))
       showToast('success', '分析完成！正在跳转报告...')
-      // 自动跳转到结果页面
       setTimeout(() => navigate(`/project/${projectId}/analysis`), 800)
     })
 
     es.addEventListener('failed', (e) => {
       try {
         const msg = JSON.parse(e.data)
-        // 优先使用 error_detail (包含完整错误信息), 其次使用 error
         const errorMsg = msg.error_detail || msg.error || '分析失败'
         setSseMessage(errorMsg)
         showToast('error', errorMsg)
@@ -171,9 +167,7 @@ export default function ProjectPage() {
       showToast('info', '分析已停止')
     })
 
-    es.onerror = () => {
-      // EventSource will auto-reconnect; don't set analyzing=false
-    }
+    es.onerror = () => { }
   }
 
   async function handleFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
@@ -234,10 +228,17 @@ export default function ProjectPage() {
   }
 
   if (loading && !project) {
-    return <div className="flex items-center justify-center py-20"><Loader2 className="w-6 h-6 animate-spin text-slate-400" /></div>
+    return <div className="flex items-center justify-center min-h-[70vh]"><Loader2 className="w-8 h-8 animate-spin text-slate-300" /></div>
   }
   if (!project) {
-    return <div className="max-w-6xl mx-auto px-4 py-8 text-center text-slate-400">找不到此项目</div>
+    return (
+      <div className="max-w-6xl mx-auto px-4 py-8">
+        <div className="flex flex-col items-center justify-center min-h-[50vh] text-slate-400">
+          <AlertCircle className="w-12 h-12 mb-3 text-slate-300" />
+          <p className="text-lg font-medium text-slate-500">找不到此项目</p>
+        </div>
+      </div>
+    )
   }
 
   const totalFiles = files.length + images.length
@@ -248,17 +249,26 @@ export default function ProjectPage() {
   return (
     <div className="max-w-6xl mx-auto px-4 py-8">
       {/* Breadcrumb */}
-      <div className="flex items-center gap-3 mb-6">
-        <Link to="/" className="text-slate-400 hover:text-slate-600 no-underline"><ArrowLeft className="w-5 h-5" /></Link>
-        <div>
-          <h1 className="text-2xl font-bold text-slate-800">{project.name}</h1>
-          {project.description && <p className="text-slate-500 text-sm mt-0.5">{project.description}</p>}
-        </div>
+      <div className="flex items-center gap-2 mb-8">
+        <Link to="/projects" className="text-slate-400 hover:text-slate-600 no-underline flex items-center gap-1 text-sm transition-colors">
+          <ArrowLeft className="w-4 h-4" />
+          项目列表
+        </Link>
+        <ChevronRight className="w-3.5 h-3.5 text-slate-300" />
+        <span className="text-sm text-slate-600 font-medium">{project.name}</span>
+      </div>
+
+      {/* Project Header */}
+      <div className="mb-8">
+        <h1 className="text-3xl font-bold text-slate-800 tracking-tight">{project.name}</h1>
+        {project.description && (
+          <p className="text-slate-500 text-sm mt-1.5">{project.description}</p>
+        )}
       </div>
 
       {/* Action Bar */}
-      <div className="bg-white rounded-xl border border-slate-200 p-4 mb-6 flex flex-wrap items-center gap-3">
-        <label className={`flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium cursor-pointer transition-colors ${uploading || isAnalyzing ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}`}>
+      <div className="bg-white rounded-2xl border border-slate-200 p-5 mb-8 flex flex-wrap items-center gap-3 shadow-sm">
+        <label className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-medium cursor-pointer transition-all ${uploading || isAnalyzing ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'bg-slate-100 text-slate-700 hover:bg-slate-200 hover:scale-[1.02] active:scale-[0.98]'}`}>
           <Upload className="w-4 h-4" />
           {uploading ? '上传中...' : isAnalyzing ? '分析中...' : '上传文件'}
           <input type="file" multiple accept=".dxf,.dwg,.pdf,.png,.jpg,.jpeg,.webp" onChange={handleFileUpload} disabled={uploading || isAnalyzing} className="hidden" />
@@ -266,18 +276,18 @@ export default function ProjectPage() {
 
         {isAnalyzing ? (
           <button onClick={stopAnalysis} disabled={stopping}
-            className="flex items-center gap-2 px-5 py-2.5 bg-red-600 text-white rounded-lg text-sm font-medium hover:bg-red-700 disabled:opacity-40 transition-colors">
+            className="flex items-center gap-2 px-5 py-2.5 bg-red-600 text-white rounded-xl text-sm font-medium hover:bg-red-700 disabled:opacity-40 transition-all hover:scale-[1.02] active:scale-[0.98] shadow-lg shadow-red-500/20">
             <Square className="w-4 h-4" /> {stopping ? '停止中...' : '停止分析'}
           </button>
         ) : (
           <button onClick={startAnalysis} disabled={!canAnalyze}
-            className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-40 transition-colors">
+            className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-blue-600 to-blue-500 text-white rounded-xl text-sm font-medium hover:from-blue-700 hover:to-blue-600 disabled:opacity-40 transition-all hover:scale-[1.02] active:scale-[0.98] shadow-lg shadow-blue-500/20">
             <Play className="w-4 h-4" /> 开始分析
           </button>
         )}
 
         {project.status === 'completed' && (
-          <Link to={`/project/${projectId}/analysis`} className="flex items-center gap-2 px-4 py-2.5 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 no-underline">
+          <Link to={`/project/${projectId}/analysis`} className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-green-600 to-emerald-500 text-white rounded-xl text-sm font-medium hover:from-green-700 hover:to-emerald-600 no-underline transition-all hover:scale-[1.02] active:scale-[0.98] shadow-lg shadow-green-500/20">
             <Download className="w-4 h-4" /> 查看报告
           </Link>
         )}
@@ -285,63 +295,77 @@ export default function ProjectPage() {
 
       {/* SSE Progress */}
       {isAnalyzing && (
-        <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-xl">
-          <div className="flex items-center gap-2 text-blue-700 text-sm font-medium mb-2">
+        <div className="mb-8 p-5 bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200/50 rounded-2xl">
+          <div className="flex items-center gap-2 text-blue-700 text-sm font-medium mb-3">
             <Loader2 className="w-4 h-4 animate-spin" />
             {sseMessage}
           </div>
-          <div className="w-full h-2 bg-blue-200 rounded-full overflow-hidden">
-            <div className="h-full bg-blue-600 rounded-full transition-all duration-500" style={{ width: `${sseProgress}%` }} />
+          <div className="w-full h-2.5 bg-blue-200/60 rounded-full overflow-hidden shadow-inner">
+            <div className="h-full bg-gradient-to-r from-blue-500 to-indigo-500 rounded-full transition-all duration-500 shadow-lg shadow-blue-500/20" style={{ width: `${sseProgress}%` }} />
           </div>
-          <div className="text-right text-xs text-blue-500 mt-1">{sseProgress}%</div>
+          <div className="flex justify-between items-center mt-2">
+            <span className="text-xs text-blue-500 font-medium">{sseProgress}%</span>
+            <span className="text-xs text-blue-400">{sseMessage}</span>
+          </div>
         </div>
       )}
 
-      {/* Input Text Display (if any) */}
+      {/* Input Text Display */}
       {project.input_text && project.input_text.trim() && (
-        <div className="mb-6 bg-white rounded-xl border border-slate-200 overflow-hidden">
-          <div className="px-5 py-3 border-b border-slate-100 bg-slate-50">
-            <h2 className="text-sm font-semibold text-slate-700">补充说明</h2>
+        <div className="mb-8 bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
+          <div className="px-6 py-4 border-b border-slate-100 bg-gradient-to-r from-slate-50 to-white">
+            <h2 className="text-sm font-semibold text-slate-700 flex items-center gap-2">
+              <FileText className="w-4 h-4 text-blue-500" />
+              补充说明
+            </h2>
           </div>
-          <div className="p-4">
-            <p className="text-sm text-slate-600 whitespace-pre-wrap">{project.input_text}</p>
+          <div className="p-5">
+            <p className="text-sm text-slate-600 whitespace-pre-wrap leading-relaxed">{project.input_text}</p>
           </div>
         </div>
       )}
 
       {/* File List */}
-      <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-        <div className="px-5 py-3 border-b border-slate-100 bg-slate-50">
+      <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
+        <div className="px-6 py-4 border-b border-slate-100 bg-gradient-to-r from-slate-50 to-white">
           <h2 className="text-sm font-semibold text-slate-700">已上传文件（{totalFiles}）</h2>
           <p className="text-xs text-slate-400 mt-0.5">支持 DXF、PDF 平面图，以及现场照片</p>
         </div>
 
         {totalFiles === 0 && !hasInputText ? (
-          <div className="p-10 text-center text-slate-400 text-sm">
-            尚无文件，请上传设计图、现场照片或填写补充说明
+          <div className="p-12 text-center">
+            <div className="w-14 h-14 rounded-2xl bg-slate-100 flex items-center justify-center mx-auto mb-3">
+              <Upload className="w-7 h-7 text-slate-300" />
+            </div>
+            <p className="text-slate-500 font-medium">尚无文件</p>
+            <p className="text-sm text-slate-400 mt-1">请上传设计图、现场照片或填写补充说明</p>
           </div>
         ) : totalFiles === 0 ? (
-          <div className="p-10 text-center text-slate-400 text-sm">
-            尚无文件，使用文本说明开始分析
+          <div className="p-12 text-center text-slate-400 text-sm">
+            <p>尚无文件，使用文本说明开始分析</p>
           </div>
         ) : (
           <div className="divide-y divide-slate-100">
             {files.map((f) => (
-              <div key={f.id} className="px-5 py-3 flex items-center gap-3 hover:bg-slate-50">
-                <FileText className="w-5 h-5 text-blue-500 flex-shrink-0" />
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm text-slate-700 truncate">{f.original_name}</p>
-                  <p className="text-xs text-slate-400">{formatSize(f.file_size)}{f.file_type ? ` · ${f.file_type.toUpperCase()}` : ''}</p>
+              <div key={f.id} className="px-6 py-4 flex items-center gap-3 hover:bg-slate-50/50 transition-colors">
+                <div className="w-9 h-9 rounded-lg bg-blue-50 flex items-center justify-center flex-shrink-0">
+                  <FileText className="w-5 h-5 text-blue-500" />
                 </div>
-                {f.parsed_content && <CheckCircle2 className="w-4 h-4 text-green-500" />}
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm text-slate-700 font-medium truncate">{f.original_name}</p>
+                  <p className="text-xs text-slate-400 mt-0.5">{formatSize(f.file_size)}{f.file_type ? ` · ${f.file_type.toUpperCase()}` : ''}</p>
+                </div>
+                {f.parsed_content && <CheckCircle2 className="w-5 h-5 text-green-500 flex-shrink-0" />}
               </div>
             ))}
             {images.map((img) => (
-              <div key={img.id} className="px-5 py-3 flex items-center gap-3 hover:bg-slate-50">
-                <Image className="w-5 h-5 text-purple-500 flex-shrink-0" />
+              <div key={img.id} className="px-6 py-4 flex items-center gap-3 hover:bg-slate-50/50 transition-colors">
+                <div className="w-9 h-9 rounded-lg bg-purple-50 flex items-center justify-center flex-shrink-0">
+                  <Image className="w-5 h-5 text-purple-500" />
+                </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm text-slate-700 truncate">{img.original_name}</p>
-                  <p className="text-xs text-slate-400">{formatSize(img.file_size)}{img.width && img.height ? ` · ${img.width}x${img.height}` : ''}</p>
+                  <p className="text-sm text-slate-700 font-medium truncate">{img.original_name}</p>
+                  <p className="text-xs text-slate-400 mt-0.5">{formatSize(img.file_size)}{img.width && img.height ? ` · ${img.width}x${img.height}` : ''}</p>
                 </div>
               </div>
             ))}
