@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { useParams, Link } from 'react-router-dom'
+import { useParams, Link, useNavigate } from 'react-router-dom'
 import { ArrowLeft, Upload, FileText, Image, Play, Download, Loader2, CheckCircle2, Square } from 'lucide-react'
 import type { Project, ProjectFile, ProjectImage } from '../types'
 import { useToast } from '../components/Toast'
@@ -9,6 +9,7 @@ const API = '/api'
 export default function ProjectPage() {
   const { id } = useParams<{ id: string }>()
   const projectId = id ?? ''
+  const navigate = useNavigate()
   const { showToast } = useToast()
 
   const [project, setProject] = useState<Project | null>(null)
@@ -69,13 +70,17 @@ export default function ProjectPage() {
             setAnalyzing(false)
             es?.close()
             fetchProject().then(p => p && setProject(p))
-            showToast('success', '分析完成！请查看报告')
+            showToast('success', '分析完成！正在跳转报告...')
+            // 自动跳转到结果页面
+            setTimeout(() => navigate(`/project/${projectId}/analysis`), 800)
           })
           es.addEventListener('failed', (e) => {
             try {
               const msg = JSON.parse(e.data)
-              setSseMessage(msg.error || '分析失败')
-              showToast('error', msg.error || '分析失败')
+              // 优先使用 error_detail (包含完整错误信息), 其次使用 error
+              const errorMsg = msg.error_detail || msg.error || '分析失败'
+              setSseMessage(errorMsg)
+              showToast('error', errorMsg)
             } catch {
               setSseMessage('分析失败')
               showToast('error', '分析失败，请重试')
@@ -137,14 +142,18 @@ export default function ProjectPage() {
       setAnalyzing(false)
       es.close()
       fetchProject().then(p => p && setProject(p))
-      showToast('success', '分析完成！请查看报告')
+      showToast('success', '分析完成！正在跳转报告...')
+      // 自动跳转到结果页面
+      setTimeout(() => navigate(`/project/${projectId}/analysis`), 800)
     })
 
     es.addEventListener('failed', (e) => {
       try {
         const msg = JSON.parse(e.data)
-        setSseMessage(msg.error || '分析失败')
-        showToast('error', msg.error || '分析失败')
+        // 优先使用 error_detail (包含完整错误信息), 其次使用 error
+        const errorMsg = msg.error_detail || msg.error || '分析失败'
+        setSseMessage(errorMsg)
+        showToast('error', errorMsg)
       } catch {
         setSseMessage('分析失败')
         showToast('error', '分析失败，请重试')

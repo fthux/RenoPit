@@ -48,3 +48,32 @@ class AnalysisSummary(BaseModel):
     """分析结果摘要（含 problems 列表）"""
     total_problems: int = 0
     problems: List[ProblemItem] = Field(default_factory=list)
+
+
+class AnalysisFrontendResponse(BaseModel):
+    """前端使用的分析结果格式：
+    - summary: AnalysisSummary 对象（含 total_pitfalls, score 等数字统计）
+    - pitfalls: 扁平化的 ProblemItem 列表（含 id, severity, category, description, suggestion 等）
+    """
+    id: str
+    project_id: str
+    status: str
+    summary: Dict[str, Any] = Field(
+        default_factory=lambda: {
+            "total_pitfalls": 0,
+            "critical_count": 0,
+            "high_count": 0,
+            "medium_count": 0,
+            "low_count": 0,
+            "score": 0,
+            "summary_text": "",
+        },
+        description="前端 summary 对象，包含统计数字和评分",
+    )
+    pitfalls: List[Dict[str, Any]] = Field(
+        default_factory=list,
+        description="前端 pitfalls 列表，每个元素包含 id, category, description, severity, location, suggestion",
+    )
+    error_message: Optional[str] = None
+    completed_at: Optional[datetime] = None
+    created_at: datetime

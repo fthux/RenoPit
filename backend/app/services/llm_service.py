@@ -94,14 +94,22 @@ async def _call_openai(
 
     Returns:
         LLM 响应文本
+
+    Raises:
+        Exception: API 调用失败时的详细信息
     """
     client = _get_openai_client()
+
+    logger.info(
+        "[OpenAI] 开始构建请求: images=%d, user_message_len=%d, system_prompt_len=%d, web_search=%s",
+        len(images_base64), len(user_message or ""), len(system_prompt or ""), enable_web_search,
+    )
 
     # 构建消息内容
     content_parts = []
 
     # 添加图片
-    for img_b64 in images_base64:
+    for i, img_b64 in enumerate(images_base64):
         # 检测 MIME 类型（如果以 data: 开头就提取，否则默认 jpeg）
         if img_b64.startswith("data:image/"):
             header_end = img_b64.find(";base64,")
@@ -122,6 +130,10 @@ async def _call_openai(
                 "detail": "high",
             },
         })
+        logger.info(
+            "[OpenAI] 图片 %d/%d: mime=%s, base64_len=%d",
+            i + 1, len(images_base64), mime_type, len(img_data),
+        )
 
     # 添加文本
     content_parts.append({
@@ -133,19 +145,43 @@ async def _call_openai(
     tools: Optional[list] = None
     if enable_web_search:
         tools = [WEB_SEARCH_TOOL_OPENAI]
+        logger.info("[OpenAI] 已启用联网搜索工具")
 
-    response = await client.chat.completions.create(
-        model=OPENAI_MODEL,
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": content_parts},
-        ],
-        tools=tools,
-        max_tokens=4096,
-        temperature=0.3,  # 低温度提高一致性
-    )
+    logger.info("[OpenAI] 正在发送请求到 API...")
 
-    return response.choices[0].message.content or ""
+    try:
+        response = await client.chat.completions.create(
+            model=OPENAI_MODEL,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": content_parts},
+            ],
+            tools=tools,
+            max_tokens=4096,
+            temperature=0.3,  # 低温度提高一致性
+        )
+
+        result = response.choices[0].message.content or ""
+        logger.info(
+            "[OpenAI] API 调用成功: response_len=%d, finish_reason=%s",
+            len(result),
+            response.choices[0].finish_reason if hasattr(response.choices[0], 'finish_reason') else 'unknown',
+        )
+
+        # 记录是否有工具调用（联网搜索）
+        if response.choices[0].message.tool_calls:
+            logger.info(
+                "[OpenAI] 模型使用了工具调用: %d 个工具",
+                len(response.choices[0].message.tool_calls),
+            )
+
+        return result
+    except Exception as e:
+        logger.error(
+            "[OpenAI] API 调用异常: %s (type=%s)",
+            str(e), type(e).__name__,
+        )
+        raise
 
 
 # ============================================================
@@ -168,8 +204,16 @@ async def _call_gemini(
 
     Returns:
         LLM 响应文本
+
+    Raises:
+        Exception: API 调用失败时的详细信息
     """
     _configure_gemini()
+
+    logger.info(
+        "[Gemini] 开始构建请求: images=%d, user_message_len=%d, system_prompt_len=%d, web_search=%s",
+        len(images_base64), len(user_message or ""), len(system_prompt or ""), enable_web_search,
+    )
 
     # 构建内容 parts
     parts: list = []
@@ -183,7 +227,7 @@ async def _call_gemini(
     parts.append({"text": text_content})
 
     # 添加图片（Gemini SDK 格式要求先文本后图片，内联数据）
-    for img_b64 in images_base64:
+    for i, img_b64 in enumerate(images_base64):
         # 清理 data URL 前缀
         if img_b64.startswith("data:image/"):
             header_end = img_b64.find(";base64,")
@@ -203,6 +247,10 @@ async def _call_gemini(
                 "data": img_data,
             }
         })
+        logger.info(
+            "[Gemini] 图片 %d/%d: mime=%s, base64_len=%d",
+            i + 1, len(images_base64), mime_type, len(img_data),
+        )
 
     # 构建生成配置
     generation_config = genai.GenerationConfig(
@@ -219,18 +267,36 @@ async def _call_gemini(
 
     generate_kwargs: dict = {}
     if enable_web_search:
-        generate_kwargs["tools"] = [{"google_search": {}}]
+        # google-generativeai 0.8.0 不支持 google_search_retrieval 工具
+        # 在 SDK 0.8.0 中联网搜索只能通过 API 默认行为触发
+        # 高版本 SDK 可以传入 tools=[genai.protos.Tool(google_search_retrieval=genai.protos.GoogleSearchRetrieval())]
+        logger.warning("[Gemini] SDK 0.8.0 不支持联网搜索工具参数，静默跳过")
 
-    response = await loop.run_in_executor(
-        None,
-        lambda: model.generate_content(
-            parts,
-            generation_config=generation_config,
-            **generate_kwargs,
-        ),
-    )
+    logger.info("[Gemini] 正在发送请求到 API...")
 
-    return response.text or ""
+    try:
+        response = await loop.run_in_executor(
+            None,
+            lambda: model.generate_content(
+                parts,
+                generation_config=generation_config,
+                **generate_kwargs,
+            ),
+        )
+
+        result = response.text or ""
+        logger.info(
+            "[Gemini] API 调用成功: response_len=%d",
+            len(result),
+        )
+        return result
+
+    except Exception as e:
+        logger.error(
+            "[Gemini] API 调用异常: %s (type=%s)",
+            str(e), type(e).__name__,
+        )
+        raise
 
 
 # ============================================================
@@ -273,8 +339,22 @@ async def analyze_design(
     # 构建用户消息
     user_message = build_user_message(extracted_texts, input_text)
 
+    logger.info(
+        "[LLM] analyze_design 开始: images=%d, extracted_texts=%d, input_text=%s, web_search=%s, system_prompt_len=%d",
+        len(images_base64),
+        len(extracted_texts) if extracted_texts else 0,
+        "有" if input_text else "无",
+        enable_web_search,
+        len(system_prompt),
+    )
+
     # 确定主要和备用模型
     provider = settings.AI_MODEL_PROVIDER.lower()
+    logger.info("[LLM] 当前配置: AI_MODEL_PROVIDER=%s, OPENAI_API_KEY=%s, GEMINI_API_KEY=%s",
+        provider,
+        "已配置 (前8位: %s)" % settings.OPENAI_API_KEY[:8] if settings.OPENAI_API_KEY else "未配置",
+        "已配置" if settings.GEMINI_API_KEY else "未配置",
+    )
 
     if provider == "gemini":
         primary_caller = _call_gemini
@@ -291,6 +371,7 @@ async def analyze_design(
 
     # 尝试主模型（含重试）
     try:
+        logger.info("[LLM] 尝试主模型: %s", primary_name)
         return await _retry_with_backoff(
             primary_caller,
             primary_name,
@@ -301,8 +382,10 @@ async def analyze_design(
         )
     except Exception as e:
         last_error = e
+        logger.error("[LLM] 主模型 %s 失败: %s", primary_name, str(e))
         # 主模型失败，尝试备用模型
         try:
+            logger.info("[LLM] 尝试备用模型: %s", fallback_name)
             return await _retry_with_backoff(
                 fallback_caller,
                 fallback_name,
@@ -312,10 +395,12 @@ async def analyze_design(
                 enable_web_search,
             )
         except Exception as fallback_error:
-            raise RuntimeError(
+            full_error = (
                 f"所有模型调用均失败。主模型({primary_name}): {last_error}，"
                 f"备用模型({fallback_name}): {fallback_error}"
-            ) from fallback_error
+            )
+            logger.error("[LLM] %s", full_error)
+            raise RuntimeError(full_error) from fallback_error
 
 
 async def _retry_with_backoff(
@@ -340,6 +425,7 @@ async def _retry_with_backoff(
         RuntimeError: 所有重试均失败
     """
     last_error = None
+    last_error_detail = None
 
     for attempt in range(MAX_RETRIES):
         try:
@@ -370,12 +456,14 @@ async def _retry_with_backoff(
 
         except asyncio.TimeoutError:
             last_error = TimeoutError(f"{model_name} 调用超时（{TIMEOUT_SECONDS}s）")
+            last_error_detail = f"TIMEOUT: {model_name} 调用超时（{TIMEOUT_SECONDS}s）"
             logger.warning("[LLM] %s 超时 (attempt %d)", model_name, attempt + 1)
         except Exception as e:
             last_error = e
+            last_error_detail = f"{type(e).__name__}: {str(e)}"
             logger.warning(
                 "[LLM] %s 调用异常 (attempt %d): %s",
-                model_name, attempt + 1, str(e),
+                model_name, attempt + 1, last_error_detail,
             )
 
         # 最后一次尝试不等待
@@ -384,7 +472,7 @@ async def _retry_with_backoff(
             logger.info("[LLM] 等待 %.0fs 后重试...", delay)
             await asyncio.sleep(delay)
 
-    logger.error("[LLM] %s 所有重试均失败: %s", model_name, last_error)
+    logger.error("[LLM] %s 所有重试均失败: %s", model_name, last_error_detail)
     raise RuntimeError(
-        f"{model_name} 调用失败（重试 {MAX_RETRIES} 次后）: {last_error}"
+        f"{model_name} 调用失败（重试 {MAX_RETRIES} 次后）: {last_error_detail}"
     ) from last_error

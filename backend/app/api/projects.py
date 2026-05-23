@@ -245,12 +245,25 @@ async def get_analysis(project_id: str, db: Session = Depends(get_db)):
 
     analysis = (
         db.query(Analysis)
-        .filter(Analysis.project_id == project_id, Analysis.status == "completed")
+        .filter(Analysis.project_id == project_id)
         .order_by(Analysis.completed_at.desc())
         .first()
     )
     if not analysis:
         raise HTTPException(status_code=404, detail="分析结果尚未生成")
+
+    # 如果分析失败，仍然返回 analysis 记录，包含 error_message
+    if analysis.status == "failed":
+        return AnalysisResponse(
+            id=analysis.id,
+            project_id=analysis.project_id,
+            status=analysis.status,
+            problems_count=0,
+            result_json=None,
+            error_message=analysis.error_message,
+            completed_at=analysis.completed_at,
+            created_at=analysis.created_at,
+        )
 
     return AnalysisResponse(
         id=analysis.id,
@@ -321,6 +334,7 @@ async def stream_analysis(project_id: str):
     import json as json_module
     from ..core.database import SessionLocal
     from ..models.analysis import Analysis as AnalysisModel
+    from ..models.analysis import Analysis
 
     async def event_generator():
         sse_db = SessionLocal()
@@ -335,11 +349,13 @@ async def stream_analysis(project_id: str):
             logger.info(f"SSE initial status: project={project_id}, status={last_status}")
 
             # 发送连接确认
-            yield f"event: progress\ndata: {json_module.dumps({'progress': 5, 'message': '已连接，等待分析完成...'}, ensure_ascii=False)}\n\n"
+            yield f"event: progress\ndata: {json_module.dumps({'progress': 5, 'message': '正在连接 AI 服务...'}, ensure_ascii=False)}\n\n"
 
-            # 轮询状态变化
+            # 轮询状态变化，带渐进进度
             retry_count = 0
             max_retries = 150  # 5 minutes max (150 * 2s)
+            # 模拟渐进进度 (10% ~ 85% 之间平滑推进)
+            simulated_progress = 10
             while last_status in ("analyzing", "parsing"):
                 await asyncio.sleep(2)
                 retry_count += 1
@@ -352,19 +368,53 @@ async def stream_analysis(project_id: str):
                     logger.info(f"SSE status change: project={project_id}, {last_status} → {project.status}")
                     last_status = project.status
                     if last_status == "analyzing":
-                        yield f"event: progress\ndata: {json_module.dumps({'progress': 30, 'message': 'AI 分析中，请稍候...'}, ensure_ascii=False)}\n\n"
+                        yield f"event: progress\ndata: {json_module.dumps({'progress': 30, 'message': 'AI 分析中，正在识别设计元素...'}, ensure_ascii=False)}\n\n"
+                        simulated_progress = 30
                     elif last_status == "completed":
-                        yield f"event: progress\ndata: {json_module.dumps({'progress': 90, 'message': '正在保存结果...'}, ensure_ascii=False)}\n\n"
+                        yield f"event: progress\ndata: {json_module.dumps({'progress': 95, 'message': '正在保存结果...'}, ensure_ascii=False)}\n\n"
                     elif last_status == "failed":
-                        yield f"event: failed\ndata: {json_module.dumps({'error': '分析失败，请查看详情'}, ensure_ascii=False)}\n\n"
+                        # 从 Analysis 表中读取实际错误信息（按 created_at 降序取最新记录）
+                        analysis = sse_db.query(Analysis).filter(
+                            Analysis.project_id == project_id,
+                        ).order_by(Analysis.created_at.desc()).first()
+                        error_detail = analysis.error_message if analysis and analysis.error_message else '分析失败，请查看详情'
+                        logger.warning(f"SSE analysis failed for project={project_id}: {error_detail}")
+                        yield f"event: failed\ndata: {json_module.dumps({'error': error_detail, 'error_detail': error_detail}, ensure_ascii=False)}\n\n"
                         return
+                else:
+                    # 状态未变化，渐进推进进度条（给用户一种"正在运行"的感觉）
+                    if simulated_progress < 85:
+                        simulated_progress += 2
+                        # 不同阶段给出不同消息
+                        stage_messages = {
+                            10: "正在加载设计图...",
+                            20: "AI 开始分析...",
+                            35: "正在检查卫生死角...",
+                            45: "正在评估空间布局...",
+                            55: "正在排查实用性陷阱...",
+                            65: "正在评估隐性成本...",
+                            75: "正在检查安全隐患...",
+                            85: "正在生成分析报告...",
+                        }
+                        # 找到最接近的 stage 消息
+                        message = "AI 分析中，请稍候..."
+                        for stage, msg in sorted(stage_messages.items()):
+                            if simulated_progress >= stage:
+                                message = msg
+                        yield f"event: progress\ndata: {json_module.dumps({'progress': simulated_progress, 'message': message}, ensure_ascii=False)}\n\n"
 
             # 最终状态
             if last_status == "completed":
-                yield f"event: completed\ndata: {json_module.dumps({'progress': 100, 'message': '分析完成！'}, ensure_ascii=False)}\n\n"
+                yield f"event: completed\ndata: {json_module.dumps({'progress': 100, 'message': '分析完成！正在跳转报告...'}, ensure_ascii=False)}\n\n"
                 logger.info(f"SSE completed for project={project_id}")
             elif last_status == "failed":
-                yield f"event: failed\ndata: {json_module.dumps({'error': '分析失败'}, ensure_ascii=False)}\n\n"
+                # 从 Analysis 表中读取实际错误信息（按 created_at 降序取最新记录）
+                analysis = sse_db.query(Analysis).filter(
+                    Analysis.project_id == project_id,
+                ).order_by(Analysis.created_at.desc()).first()
+                error_detail = analysis.error_message if analysis and analysis.error_message else '分析失败'
+                logger.warning(f"SSE analysis final failed for project={project_id}: {error_detail}")
+                yield f"event: failed\ndata: {json_module.dumps({'error': error_detail, 'error_detail': error_detail}, ensure_ascii=False)}\n\n"
             elif last_status == "pending":
                 yield f"event: stopped\ndata: {json_module.dumps({'message': '分析已停止'}, ensure_ascii=False)}\n\n"
                 logger.info(f"SSE stopped for project={project_id}")
@@ -385,6 +435,162 @@ async def stream_analysis(project_id: str):
             "X-Accel-Buffering": "no",
         },
     )
+
+
+# ── GET /api/projects/:id/result — frontend-oriented analysis result ──
+@router.get("/{project_id}/result")
+async def get_analysis_result(project_id: str, db: Session = Depends(get_db)):
+    """返回前端友好的分析结果格式，将 AI JSON 转换为前端 types 定义的结构。
+
+    转换规则：
+    - problems → pitfalls（每个问题扁平化为 {id, category, description, severity, location, suggestion}）
+    - summary → {total_pitfalls, critical_count, high_count, medium_count, low_count, score, summary_text}
+    - 严重等级按 heuristic 从 critique 文本匹配判断
+    """
+    project = db.query(Project).filter(Project.id == project_id).first()
+    if not project:
+        raise HTTPException(status_code=404, detail="项目不存在")
+
+    analysis = (
+        db.query(Analysis)
+        .filter(Analysis.project_id == project_id)
+        .order_by(Analysis.created_at.desc())
+        .first()
+    )
+    if not analysis:
+        raise HTTPException(status_code=404, detail="分析结果尚未生成")
+
+    # 失败时返回 error_message
+    if analysis.status == "failed":
+        return {
+            "id": analysis.id,
+            "project_id": project_id,
+            "status": "failed",
+            "summary": {
+                "total_pitfalls": 0,
+                "critical_count": 0,
+                "high_count": 0,
+                "medium_count": 0,
+                "low_count": 0,
+                "score": 0,
+                "summary_text": analysis.error_message or "分析失败",
+            },
+            "pitfalls": [],
+            "error_message": analysis.error_message,
+            "completed_at": analysis.completed_at,
+            "created_at": analysis.created_at,
+        }
+
+    raw_data = analysis.raw_result_json or {}
+    problems = raw_data.get("problems", [])
+    summary_text = raw_data.get("summary", "")
+
+    # 转换 summary
+    score = _calculate_score(len(problems))
+    severity_counts = _count_severities(problems)
+
+    # 转换 problems → pitfalls
+    pitfalls = []
+    for i, p in enumerate(problems):
+        if not isinstance(p, dict):
+            continue
+        severity = _infer_severity(p)
+        pitfalls.append({
+            "id": str(i + 1),
+            "category": _infer_category(p),
+            "description": p.get("title", p.get("critique", "")),
+            "severity": severity,
+            "location": p.get("location"),
+            "suggestion": p.get("alternative", ""),
+            "critique": p.get("critique"),
+            "trap_explanation": p.get("trap_explanation"),
+            "bbox": p.get("bbox"),
+        })
+
+    return {
+        "id": analysis.id,
+        "project_id": project_id,
+        "status": "completed",
+        "summary": {
+            "total_pitfalls": len(pitfalls),
+            "critical_count": severity_counts["critical"],
+            "high_count": severity_counts["high"],
+            "medium_count": severity_counts["medium"],
+            "low_count": severity_counts["low"],
+            "score": score,
+            "summary_text": summary_text,
+        },
+        "pitfalls": pitfalls,
+        "error_message": None,
+        "completed_at": analysis.completed_at,
+        "created_at": analysis.created_at,
+    }
+
+
+def _calculate_score(problem_count: int) -> int:
+    """根据问题数量估算评分 (0-100)"""
+    if problem_count == 0:
+        return 95
+    score = max(0, 100 - problem_count * 8)
+    return score
+
+
+def _count_severities(problems: list) -> dict:
+    """统计严重等级"""
+    counts = {"critical": 0, "high": 0, "medium": 0, "low": 0}
+    for p in problems:
+        sev = _infer_severity(p)
+        counts[sev] = counts.get(sev, 0) + 1
+    return counts
+
+
+def _infer_severity(problem: dict) -> str:
+    """从问题文本推断严重等级"""
+    title = (problem.get("title") or "").lower()
+    critique = (problem.get("critique") or "").lower()
+    combined = title + " " + critique
+
+    # 严重关键词
+    critical_kw = ["安全", "坠落", "坍塌", "火灾", "漏电", "中毒", "危险", "致命"]
+    high_kw = ["高额", "坑", "陷阱", "浪费", "无法", "严重", "重大"]
+    medium_kw = ["不便", "麻烦", "难看", "不佳", "较差", "一般"]
+    low_kw = ["微", "略", "稍", "可能", "可接受"]
+
+    for kw in critical_kw:
+        if kw in combined:
+            return "critical"
+    for kw in high_kw:
+        if kw in combined:
+            return "high"
+    for kw in medium_kw:
+        if kw in combined:
+            return "medium"
+    for kw in low_kw:
+        if kw in combined:
+            return "low"
+    return "medium"  # default
+
+
+def _infer_category(problem: dict) -> str:
+    """从问题文本推断类别"""
+    title = (problem.get("title") or "").lower()
+    critique = (problem.get("critique") or "").lower()
+    combined = title + " " + critique
+    location = (problem.get("location") or "").lower()
+
+    category_map = [
+        ("卫生死角", ["积灰", "清洁", "卫生", "死角"]),
+        ("空间压迫", ["压抑", "压迫", "拥挤", "空间小", "狭小"]),
+        ("安全与健康", ["安全", "坠落", "坍塌", "火灾", "漏电", "中毒"]),
+        ("隐性成本", ["成本", "费用", "预算", "价格", "高价", "溢价", "浪费"]),
+        ("实用性伪需求", ["不实用", "伪", "好看", "美观", "装饰", "鸡肋"]),
+    ]
+
+    for category, keywords in category_map:
+        for kw in keywords:
+            if kw in combined or kw in location:
+                return category
+    return "其他"
 
 
 # ── GET /api/projects/:id/report — report info (JSON) ──────────────

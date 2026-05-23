@@ -21,7 +21,8 @@ export default function AnalysisPage() {
   const fetchAnalysis = useCallback(async () => {
     setLoading(true)
     try {
-      const res = await fetch(`${API}/projects/${projectId}/analysis`)
+      // 使用 /result 端点获取前端的友好格式
+      const res = await fetch(`${API}/projects/${projectId}/result`)
       if (res.ok) setResult(await res.json())
       else setError('无法加载分析结果')
     } catch { setError('加载失败') }
@@ -41,6 +42,32 @@ export default function AnalysisPage() {
         <div className="bg-white rounded-xl border border-slate-200 p-10 text-center text-slate-400">
           <AlertTriangle className="w-10 h-10 mx-auto mb-3 text-yellow-500" />
           <p>{error || '尚无分析结果，请先上传文件并开始分析'}</p>
+        </div>
+      </div>
+    )
+  }
+
+  // 如果分析失败，显示错误详情
+  if (result.status === 'failed') {
+    return (
+      <div className="max-w-6xl mx-auto px-4 py-8">
+        <Link to={`/project/${projectId}`} className="text-slate-400 hover:text-slate-600 no-underline flex items-center gap-2 mb-6"><ArrowLeft className="w-4 h-4" /> 返回项目</Link>
+        <div className="bg-red-50 rounded-xl border border-red-200 p-8">
+          <div className="flex items-center gap-3 mb-4">
+            <AlertTriangle className="w-8 h-8 text-red-500" />
+            <div>
+              <h2 className="text-lg font-bold text-red-800">分析失败</h2>
+              <p className="text-sm text-red-600">详细错误信息如下：</p>
+            </div>
+          </div>
+          <div className="bg-white rounded-lg border border-red-100 p-4 mt-2">
+            <pre className="text-sm text-red-700 whitespace-pre-wrap font-mono">{result.error_message || '未知错误'}</pre>
+          </div>
+          <div className="mt-4">
+            <Link to={`/project/${projectId}`} className="inline-flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg text-sm font-medium hover:bg-red-700 no-underline">
+              返回项目详情
+            </Link>
+          </div>
         </div>
       </div>
     )
