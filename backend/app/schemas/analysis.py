@@ -50,6 +50,47 @@ class AnalysisSummary(BaseModel):
     problems: List[ProblemItem] = Field(default_factory=list)
 
 
+class DocumentRisk(BaseModel):
+    """合同/报价单分析中的单个风险项"""
+    id: str = Field(description="风险 ID")
+    category: str = Field(description="类别: billing_trap, contract_clause, extra_item")
+    title: str = Field(description="问题标题")
+    original_text: str = Field(description="文档原文引用")
+    critique: str = Field(description="批判分析")
+    financial_consequence: str = Field(description="可能的财务后果")
+    suggested_fix: str = Field(description="建议的修改方案")
+
+
+# Alias — DocumentRiskItem is used in API responses and frontend types
+DocumentRiskItem = DocumentRisk
+
+
+class DocumentAnalysisResponse(BaseModel):
+    """文档分析结果响应"""
+    id: str
+    project_id: str
+    project_file_id: Optional[str] = None
+    status: str = "pending"
+    doc_type: str = "unknown"
+    confidence: float = 0.0
+    summary: str = ""
+    total_estimated_risk: str = ""
+    risks_count: int = 0
+    risks: List[DocumentRisk] = Field(default_factory=list)
+    classifications: Optional[Dict[str, Any]] = None
+    error_message: Optional[str] = None
+    completed_at: Optional[datetime] = None
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class DocumentAnalysisListResponse(BaseModel):
+    """文档分析列表响应"""
+    items: List[DocumentAnalysisResponse] = Field(default_factory=list)
+    total: int = 0
+
+
 class AnalysisFrontendResponse(BaseModel):
     """前端使用的分析结果格式：
     - summary: AnalysisSummary 对象（含 total_pitfalls, score 等数字统计）

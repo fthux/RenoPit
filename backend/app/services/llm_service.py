@@ -403,6 +403,198 @@ async def analyze_design(
             raise RuntimeError(full_error) from fallback_error
 
 
+async def analyze_document(
+    document_text: str,
+    filename: str = "",
+) -> str:
+    """调用纯文本文档分析（合同/报价单审核），不使用多模态图片
+
+    使用主模型进行仅文本分析，审核合同条款和报价陷阱。
+
+    Args:
+        document_text: 从 PDF/文件提取的文档纯文本
+        filename: 原始文件名（用于日志）
+
+    Returns:
+        LLM 响应文本（期望为 JSON 格式的 risks 列表）
+
+    Raises:
+        RuntimeError: 所有模型调用均失败
+    """
+    from .prompt_builder import build_document_analysis_prompt
+
+    system_prompt = build_document_analysis_prompt()
+
+    user_message = f"""请审核以下装修相关的合同/报价文档，逐项检查本地知识库中的所有陷阱。
+
+文档名称：{filename if filename else '未知文件'}
+
+文档内容：
+{document_text}
+
+请严格按照 JSON 格式输出分析结果。"""
+
+    logger.info(
+        "[LLM] analyze_document 开始: file=%s, text_len=%d, system_prompt_len=%d",
+        filename, len(document_text), len(system_prompt),
+    )
+
+    provider = settings.AI_MODEL_PROVIDER.lower()
+    last_error = None
+
+    # 确定主模型和备用模型（文本仅用 OpenAI 格式也可以，Gemini 也支持纯文本）
+    if provider == "gemini":
+        primary_caller = _call_gemini_text
+        primary_name = "Gemini"
+        fallback_caller = _call_openai_text
+        fallback_name = "OpenAI GPT-4o"
+    else:
+        primary_caller = _call_openai_text
+        primary_name = "OpenAI GPT-4o"
+        fallback_caller = _call_gemini_text
+        fallback_name = "Gemini"
+
+    # 尝试主模型
+    try:
+        logger.info("[LLM] 文档分析尝试主模型: %s", primary_name)
+        return await _retry_with_backoff_text(
+            primary_caller,
+            primary_name,
+            system_prompt,
+            user_message,
+        )
+    except Exception as e:
+        last_error = e
+        logger.error("[LLM] 文档分析主模型 %s 失败: %s", primary_name, str(e))
+        try:
+            logger.info("[LLM] 文档分析尝试备用模型: %s", fallback_name)
+            return await _retry_with_backoff_text(
+                fallback_caller,
+                fallback_name,
+                system_prompt,
+                user_message,
+            )
+        except Exception as fallback_error:
+            full_error = (
+                f"文档分析所有模型调用均失败。主模型({primary_name}): {last_error}，"
+                f"备用模型({fallback_name}): {fallback_error}"
+            )
+            logger.error("[LLM] %s", full_error)
+            raise RuntimeError(full_error) from fallback_error
+
+
+async def _call_openai_text(
+    system_prompt: str,
+    user_message: str,
+) -> str:
+    """调用 OpenAI GPT-4o 纯文本分析"""
+    client = _get_openai_client()
+    logger.info("[OpenAI-Text] 开始请求, user_message_len=%d", len(user_message))
+
+    try:
+        response = await client.chat.completions.create(
+            model=OPENAI_MODEL,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_message},
+            ],
+            max_tokens=4096,
+            temperature=0.3,
+        )
+        result = response.choices[0].message.content or ""
+        logger.info("[OpenAI-Text] 调用成功: response_len=%d", len(result))
+        return result
+    except Exception as e:
+        logger.error("[OpenAI-Text] 调用异常: %s", str(e))
+        raise
+
+
+async def _call_gemini_text(
+    system_prompt: str,
+    user_message: str,
+) -> str:
+    """调用 Gemini 纯文本分析"""
+    _configure_gemini()
+    loop = asyncio.get_event_loop()
+
+    model = genai.GenerativeModel(
+        GEMINI_MODEL,
+        system_instruction=system_prompt if system_prompt else None,
+    )
+
+    generation_config = genai.GenerationConfig(
+        max_output_tokens=4096,
+        temperature=0.3,
+    )
+
+    logger.info("[Gemini-Text] 开始请求, user_message_len=%d", len(user_message))
+
+    try:
+        response = await loop.run_in_executor(
+            None,
+            lambda: model.generate_content(user_message, generation_config=generation_config),
+        )
+        result = response.text or ""
+        logger.info("[Gemini-Text] 调用成功: response_len=%d", len(result))
+        return result
+    except Exception as e:
+        logger.error("[Gemini-Text] 调用异常: %s", str(e))
+        raise
+
+
+async def _retry_with_backoff_text(
+    caller_func,
+    model_name: str,
+    system_prompt: str,
+    user_message: str,
+) -> str:
+    """文档分析专用的重试封装"""
+    last_error = None
+    last_error_detail = None
+
+    for attempt in range(MAX_RETRIES):
+        try:
+            logger.info(
+                "[LLM] 调用 %s 文档分析 (第 %d/%d 次)",
+                model_name, attempt + 1, MAX_RETRIES,
+            )
+            result = await asyncio.wait_for(
+                caller_func(system_prompt, user_message),
+                timeout=TIMEOUT_SECONDS,
+            )
+
+            if result and result.strip():
+                logger.info(
+                    "[LLM] %s 文档分析成功, 响应长度=%d",
+                    model_name, len(result),
+                )
+                return result
+
+            raise ValueError(f"{model_name} 返回空响应")
+
+        except asyncio.TimeoutError:
+            last_error = TimeoutError(f"{model_name} 文档分析超时（{TIMEOUT_SECONDS}s）")
+            last_error_detail = f"TIMEOUT: {model_name} 超时"
+            logger.warning("[LLM] %s 文档分析超时 (attempt %d)", model_name, attempt + 1)
+        except Exception as e:
+            last_error = e
+            last_error_detail = f"{type(e).__name__}: {str(e)}"
+            logger.warning(
+                "[LLM] %s 文档分析异常 (attempt %d): %s",
+                model_name, attempt + 1, last_error_detail,
+            )
+
+        if attempt < MAX_RETRIES - 1:
+            delay = BASE_DELAY * (2 ** attempt)
+            logger.info("[LLM] 等待 %.0fs 后重试...", delay)
+            await asyncio.sleep(delay)
+
+    logger.error("[LLM] %s 文档分析所有重试均失败: %s", model_name, last_error_detail)
+    raise RuntimeError(
+        f"{model_name} 文档分析失败（重试 {MAX_RETRIES} 次后）: {last_error_detail}"
+    ) from last_error
+
+
 async def _retry_with_backoff(
     caller_func,
     model_name: str,

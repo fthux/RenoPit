@@ -1,7 +1,5 @@
+# -*- coding: utf-8 -*-
 """
-API 路由导出
+API Routes
 """
-
-from .projects import router as projects_router
-
-__all__ = ["projects_router"]
+from .projects import router as projects_router  # noqa: F401

@@ -274,3 +274,191 @@ def run_analysis_sync(project_id: str) -> dict:
 
     finally:
         db.close()
+
+
+def run_document_analysis_sync(project_id: str, project_file_id: str) -> dict:
+    """同步执行文档分析（合同/报价单审核），供 Celery 任务调用
+
+    完整流程：
+    1. 加载项目文件并提取文本
+    2. 文档分类检测（合同/报价单/无关文件）
+    3. 调用 LLM 进行合同/报价审核
+    4. JSON 校验与修复
+    5. 结果存储到 document_analyses 表
+    6. 返回结果字典
+
+    Args:
+        project_id: 项目 ID
+        project_file_id: 要分析的文件 ID
+
+    Returns:
+        结果字典：{"status": "completed" | "failed", "analysis_id": str, ...}
+    """
+    from ..models.document_analysis import DocumentAnalysis
+    from .document_classifier import classify_document
+    from .llm_service import analyze_document
+
+    db: Session = SessionLocal()
+    doc_analysis: Optional[DocumentAnalysis] = None
+
+    try:
+        # Step 1: 加载项目文件
+        project_file = db.query(ProjectFile).filter(
+            ProjectFile.id == project_file_id,
+            ProjectFile.project_id == project_id,
+        ).first()
+
+        if not project_file:
+            raise ValueError(f"项目文件不存在: project={project_id}, file={project_file_id}")
+
+        file_path = project_file.storage_path
+        if not os.path.exists(file_path):
+            raise ValueError(f"文件实体不存在: {file_path}")
+
+        logger.info(
+            "[AnalysisEngine] 开始文档分析 project=%s, file=%s, name=%s",
+            project_id, project_file_id, project_file.original_filename,
+        )
+
+        # Step 2: 提取文本
+        ext = os.path.splitext(project_file.original_filename)[1].lstrip(".").lower()
+        document_text = parse_file_text(file_path, ext)
+
+        if not document_text or not document_text.strip():
+            raise ValueError("文件内容为空或无法提取文本")
+
+        logger.info(
+            "[AnalysisEngine] 文档文本提取完成: len=%d",
+            len(document_text),
+        )
+
+        # 更新文件记录的 extracted_text
+        project_file.extracted_text = document_text
+        db.add(project_file)
+        db.flush()
+
+        # Step 3: 文档分类
+        classification = classify_document(document_text, project_file.original_filename)
+
+        logger.info(
+            "[AnalysisEngine] 文档分类完成: type=%s, confidence=%.2f, relevant=%s",
+            classification.doc_type, classification.confidence, classification.is_relevant,
+        )
+
+        # Step 4: 创建 DocumentAnalysis 记录
+        doc_analysis = DocumentAnalysis(
+            project_id=project_id,
+            project_file_id=project_file_id,
+            status="processing",
+            doc_type=classification.doc_type,
+            confidence=classification.confidence,
+            classifications_json={
+                "is_relevant": classification.is_relevant,
+                "doc_type": classification.doc_type,
+                "language": classification.language,
+                "confidence": classification.confidence,
+                "reasons": classification.reasons,
+                "key_snippets": classification.key_snippets,
+                "suggestion": classification.suggestion,
+            },
+        )
+        db.add(doc_analysis)
+        db.flush()
+
+        logger.info("[AnalysisEngine] DocumentAnalysis 记录创建: id=%s", doc_analysis.id)
+
+        # Step 5: 调用 LLM 分析
+        try:
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                with concurrent.futures.ThreadPoolExecutor() as executor:
+                    llm_response = executor.submit(
+                        lambda: asyncio.run(
+                            analyze_document(
+                                document_text=document_text,
+                                filename=project_file.original_filename,
+                            )
+                        )
+                    ).result()
+            else:
+                llm_response = loop.run_until_complete(
+                    analyze_document(
+                        document_text=document_text,
+                        filename=project_file.original_filename,
+                    )
+                )
+        except RuntimeError:
+            llm_response = asyncio.run(
+                analyze_document(
+                    document_text=document_text,
+                    filename=project_file.original_filename,
+                )
+            )
+
+        logger.info(
+            "[AnalysisEngine] LLM 文档分析响应长度=%d",
+            len(llm_response) if llm_response else 0,
+        )
+
+        # Step 6: JSON 校验与修复
+        from .json_validator import validate_document_report
+        result_data, error_msg = validate_document_report(llm_response)
+
+        if result_data is not None:
+            doc_analysis.risks_json = result_data
+            doc_analysis.summary = result_data.get("summary", "")
+            doc_analysis.total_estimated_risk = result_data.get("total_estimated_risk", "")
+            doc_analysis.risks_count = len(result_data.get("risks", []))
+            doc_analysis.status = "completed"
+            doc_analysis.completed_at = datetime.utcnow()
+            logger.info(
+                "[AnalysisEngine] 文档分析完成: risks=%d, summary=%s",
+                doc_analysis.risks_count,
+                doc_analysis.summary[:100] if doc_analysis.summary else "",
+            )
+        else:
+            doc_analysis.error_message = error_msg or "JSON 校验失败"
+            doc_analysis.status = "failed"
+            doc_analysis.completed_at = datetime.utcnow()
+            logger.error(
+                "[AnalysisEngine] 文档 JSON 校验失败: %s", error_msg,
+            )
+
+        db.commit()
+        db.refresh(doc_analysis)
+
+        return {
+            "status": doc_analysis.status,
+            "analysis_id": doc_analysis.id,
+            "project_id": project_id,
+            "project_file_id": project_file_id,
+            "doc_type": doc_analysis.doc_type,
+            "confidence": doc_analysis.confidence,
+            "risks_count": doc_analysis.risks_count,
+            "summary": doc_analysis.summary,
+            "total_estimated_risk": doc_analysis.total_estimated_risk,
+            "error_message": doc_analysis.error_message,
+        }
+
+    except Exception as e:
+        logger.error(
+            "[AnalysisEngine] 文档分析异常 project=%s, file=%s: %s",
+            project_id, project_file_id, str(e),
+        )
+        db.rollback()
+
+        if doc_analysis:
+            doc_analysis.status = "failed"
+            doc_analysis.error_message = str(e)
+            doc_analysis.completed_at = datetime.utcnow()
+            db.commit()
+
+        return {
+            "status": "failed",
+            "project_id": project_id,
+            "project_file_id": project_file_id,
+            "error_message": str(e),
+        }
+
+    finally:
+        db.close()

@@ -134,7 +134,7 @@ def _severity_label(sev):
     return {"critical": "严重", "high": "高", "medium": "中", "low": "低"}.get(sev, sev)
 
 
-def _build_content(project_id: str, analysis_data: dict, images_data: list) -> list:
+def _build_content(project_id: str, analysis_data: dict, images_data: list, document_analyses_data: Optional[list] = None) -> list:
     """Build the document content (list of flowables)."""
     S = _styles()
     story = []
@@ -229,7 +229,20 @@ def _build_content(project_id: str, analysis_data: dict, images_data: list) -> l
                     story.append(bar)
                     story.append(Spacer(1, 4 * mm))
 
-    story.append(PageBreak())
+    # ── Document Risk Analysis Section ────────────────────────────
+    if document_analyses_data:
+        story.append(Paragraph("合同 / 报价单风险分析", S["h1"]))
+        story.append(Paragraph("以下为 AI 对上传的合同、报价单等文档进行的风险检测分析：", S["body"]))
+        story.append(Spacer(1, 4 * mm))
+
+        # Sort: latest first
+        sorted_docs = sorted(document_analyses_data, key=lambda x: x.get("created_at", ""), reverse=True)
+        for doc in sorted_docs:
+            story = _build_document_risk_section(story, doc, S)
+            story.append(Spacer(1, 4 * mm))
+
+        story.append(PageBreak())
+
 
     # ── Design Images Section ──────────────────────────────────
     if images_data:
@@ -496,6 +509,89 @@ def _build_pitfall_card(item: dict, S: dict):
     return card
 
 
+def _build_document_risk_section(story: list, doc: dict, S: dict) -> list:
+    """Build a section for one document's risk analysis in the PDF."""
+    file_name = doc.get("file_name", "未知文档")
+    classification = doc.get("classification", "其他")
+    overall_risk = doc.get("overall_risk", "medium")
+    findings = doc.get("findings", [])
+    created_at = doc.get("created_at", "")[:19]
+
+    risk_colors = {
+        "high": _COLORS["critical"],
+        "medium": _COLORS["medium"],
+        "low": _COLORS["low"],
+    }
+    risk_labels = {"high": "高风险", "medium": "中风险", "low": "低风险"}
+    risk_color = risk_colors.get(overall_risk, _COLORS["text_muted"])
+    risk_label = risk_labels.get(overall_risk, overall_risk)
+
+    header_text = (
+        f'<font color="{risk_color}"><b>📄 {_sanitize_html(file_name)}</b></font> '
+        f'<font color="{_COLORS["text_muted"]}">| 分类：{_sanitize_html(classification)}'
+        f' | 风险等级：</font><font color="{risk_color}"><b>{risk_label}</b></font>'
+        f'<font color="{_COLORS["text_muted"]}"> | {created_at}</font>'
+    )
+    story.append(Paragraph(header_text, S["body"]))
+    story.append(Spacer(1, 2 * mm))
+
+    if not findings:
+        story.append(Paragraph(
+            f'<font color="{_COLORS["text_muted"]}">未检测到具体风险条款</font>',
+            S["body_small"],
+        ))
+        story.append(Spacer(1, 2 * mm))
+        return story
+
+    for item in findings:
+        item_type = item.get("type", "风险条款")
+        item_desc = item.get("description", "")
+        item_sev = item.get("severity", "medium")
+        item_suggestion = item.get("suggestion", "")
+
+        item_sev_color = _SEVERITY_COLORS.get(item_sev, (_COLORS["text"], _COLORS["bg_light"]))[0]
+        item_sev_bg = _SEVERITY_COLORS.get(item_sev, (_COLORS["text"], _COLORS["bg_light"]))[1]
+        item_sev_label = _severity_label(item_sev)
+
+        card_data = []
+        card_data.append([
+            Paragraph(
+                f'<font color="{item_sev_color}">● [{item_sev_label}]</font> '
+                f'<font color="{_COLORS["text"]}"><b>{_sanitize_html(item_type)}</b></font>',
+                S["body_small"],
+            )
+        ])
+        if item_desc:
+            card_data.append([
+                Paragraph(
+                    f'<font color="{_COLORS["text"]}">{_sanitize_html(item_desc)}</font>',
+                    S["body_small"],
+                )
+            ])
+        if item_suggestion:
+            card_data.append([
+                Paragraph(
+                    f'<font color="{_COLORS["accent"]}"><b>✓ 建议：</b></font>'
+                    f'<font color="{_COLORS["text"]}">{_sanitize_html(item_suggestion)}</font>',
+                    S["body_small"],
+                )
+            ])
+
+        card = Table(card_data, colWidths=[165 * mm])
+        card.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor(item_sev_bg)),
+            ("BOX", (0, 0), (-1, -1), 0.5, colors.HexColor(_COLORS["border"])),
+            ("TOPPADDING", (0, 0), (-1, -1), 6),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+            ("LEFTPADDING", (0, 0), (-1, -1), 10),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 10),
+        ]))
+        story.append(card)
+        story.append(Spacer(1, 2 * mm))
+
+    return story
+
+
 def _sanitize_html(text: str) -> str:
     """Escape HTML special characters to prevent ReportLab XML parsing errors."""
     if not isinstance(text, str):
@@ -543,7 +639,12 @@ def _content_tmpl(canvas, doc):
 
 
 # ── Main Generator ─────────────────────────────────────────────────
-def generate_pdf(project_id: str, result_data: dict, images_data: list) -> Optional[bytes]:
+def generate_pdf(
+    project_id: str,
+    result_data: dict,
+    images_data: list,
+    document_analyses_data: Optional[list] = None,
+) -> Optional[bytes]:
     """Generate a PDF report for the given project.
 
     Accepts pre-computed `result_data` (from the /api/projects/{id}/result endpoint)
@@ -555,6 +656,8 @@ def generate_pdf(project_id: str, result_data: dict, images_data: list) -> Optio
         result_data: The analysis result dict as returned by `_build_result_data()`.
         images_data: List of image info dicts with keys:
             id, original_name, original_filename, storage_path, width, height.
+        document_analyses_data: Optional list of DocumentAnalysis dicts for the
+            contract / quotation risk analysis section.
 
     Returns:
         PDF bytes, or None if generation fails.
@@ -590,7 +693,7 @@ def generate_pdf(project_id: str, result_data: dict, images_data: list) -> Optio
             PageTemplate(id="Content", frames=[_CONTENT_FRAME], onPage=_content_tmpl),
         ])
 
-        story = _build_content(project_id, analysis_data, images_data)
+        story = _build_content(project_id, analysis_data, images_data, document_analyses_data)
         doc.build(story)
         pdf_bytes = buf.getvalue()
         buf.close()

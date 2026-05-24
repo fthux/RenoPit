@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useParams, Link, useNavigate } from 'react-router-dom'
-import { ArrowLeft, Upload, FileText, Image, Play, Loader2, CheckCircle2, Square, ChevronRight, AlertCircle, Pencil, Check, X, FileSearch, RefreshCw, Download, Eye, Trash2 } from 'lucide-react'
+import { ArrowLeft, Upload, FileText, Image, Play, Loader2, CheckCircle2, Square, ChevronRight, AlertCircle, Pencil, Check, X, FileSearch, RefreshCw, Download, Eye, Trash2, ScanSearch } from 'lucide-react'
 import type { Project, ProjectFile, ProjectImage } from '../types'
 import { useToast } from '../components/Toast'
 import ConfirmDialog from '../components/ConfirmDialog'
@@ -28,6 +28,9 @@ export default function ProjectPage() {
   const [editingField, setEditingField] = useState<'name' | 'description' | 'input_text' | null>(null)
   const [editValue, setEditValue] = useState('')
   const [saving, setSaving] = useState(false)
+
+  // Document analysis
+  const [analyzingDocId, setAnalyzingDocId] = useState<string | null>(null)
 
   // Re-analysis confirmation
   const [showReanalyzeConfirm, setShowReanalyzeConfirm] = useState(false)
@@ -569,6 +572,36 @@ export default function ProjectPage() {
                 </div>
                 {f.parsed_content && <CheckCircle2 className="w-5 h-5 text-green-500 flex-shrink-0" />}
                 <div className="flex items-center gap-1 flex-shrink-0">
+                  {/* Document analysis button for contract/quotation files */}
+                  {(f.file_type === 'pdf' || f.file_type === 'docx' || f.file_type === 'txt' || f.file_type === 'md') && f.parsed_content && (
+                    <button
+                      onClick={async () => {
+                        setAnalyzingDocId(f.id)
+                        try {
+                          const res = await fetch(`${API}/projects/${projectId}/analyze/document/${f.id}`, { method: 'POST' })
+                          if (res.ok) {
+                            showToast('success', '文档分析已启动，稍后刷新查看结果')
+                          } else {
+                            const err = await res.json().catch(() => ({ detail: '启动失败' }))
+                            showToast('error', err.detail || '文档分析启动失败')
+                          }
+                        } catch {
+                          showToast('error', '文档分析启动失败')
+                        } finally {
+                          setAnalyzingDocId(null)
+                        }
+                      }}
+                      disabled={analyzingDocId === f.id}
+                      className="p-1.5 rounded-lg text-slate-400 hover:text-violet-600 hover:bg-violet-50 transition-colors"
+                      title="分析合同/报价单"
+                    >
+                      {analyzingDocId === f.id ? (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                      ) : (
+                        <ScanSearch className="w-4 h-4" />
+                      )}
+                    </button>
+                  )}
                   {(f.file_type === 'txt' || f.file_type === 'md') && (
                     <button
                       onClick={async () => {
@@ -642,6 +675,8 @@ export default function ProjectPage() {
           </div>
         )}
       </div>
+
+      {/* Document Risk Analysis Panel */}
 
       {/* Image Preview Modal */}
       {previewImage && (

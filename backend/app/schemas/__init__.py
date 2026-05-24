@@ -15,6 +15,10 @@ from .analysis import (
     ProblemItem,
     AnalysisResponse,
     AnalysisSummary,
+    DocumentRisk,
+    DocumentRiskItem,
+    DocumentAnalysisResponse,
+    DocumentAnalysisListResponse,
 )
 from .file import (
     FileUploadResponse,
@@ -32,6 +36,10 @@ __all__ = [
     "ProblemItem",
     "AnalysisResponse",
     "AnalysisSummary",
+    "DocumentRisk",
+    "DocumentRiskItem",
+    "DocumentAnalysisResponse",
+    "DocumentAnalysisListResponse",
     "FileUploadResponse",
     "FileResponse",
 ]

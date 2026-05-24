@@ -77,6 +77,54 @@
         {"id": "A009", "description": "暗卫无排气扇或排气管道不独立——潮湿霉味倒灌"},
         {"id": "A010", "description": "墙纸/墙布大面积使用——胶水含甲醛且南方潮湿易起翘发霉"}
       ]
+    },
+    "billing_traps": {
+      "label": "报价陷阱",
+      "items": [
+        {"id": "B001", "description": "水电按米结算（实测实量）——装修公司故意少报米数，施工中不断追加，最终费用远超预算"},
+        {"id": "B002", "description": "报价单使用「一」「项」「批」等模糊计价单位——不给具体数量，后期按实际追加"},
+        {"id": "B003", "description": "故意漏报必做项目（如美缝、保洁、成品保护），用低价吸引签约，后期补项加价"},
+        {"id": "B004", "description": "材料品牌写「或同等品牌」——签约时用名牌，施工时用低配替代品赚差价"},
+        {"id": "B005", "description": "瓷砖铺贴、墙面找平只报标准规格（300×600/600×600），非标砖铺贴费单独立项加收"},
+        {"id": "B006", "description": "合同只写总价不写单项单价，变更时无依据只能被宰"},
+        {"id": "B007", "description": "墙面铲除到红砖单独报价——拆旧时发现墙面空鼓，另付铲除费，费用可能翻倍"},
+        {"id": "B008", "description": "窗帘盒、窗台石等小项单独加价——这些本是包含在基础工程里的，被拆开收了两次钱"},
+        {"id": "B009", "description": "管理费/设计费/远程费/上楼费——多种附加费用叠加，实际支付远超合同价"},
+        {"id": "B010", "description": "水电点位按个数加钱——装修公司故意少报插座/开关/网线/水位数量，每增加一个收费200-500元"},
+        {"id": "B011", "description": "垃圾清运费模糊计价——仅写「含垃圾清运」但不说明距离/频次，实际因多次清运加价"},
+        {"id": "B012", "description": "柜体定制仅报投影面积单价——实际算上五金、抽屉、拉手后价格翻倍"}
+      ]
+    },
+    "contract_clauses": {
+      "label": "合同条款陷阱",
+      "items": [
+        {"id": "L001", "description": "付款节奏不公——签约即付50%以上，中期付40%，尾款仅留5-10%，业主后期完全没有话语权"},
+        {"id": "L002", "description": "延期违约金过低或不约定——装修公司拖延不承担实际损失，业主只能干等"},
+        {"id": "L003", "description": "质保条款模糊——笼统写「按国家规定执行」，水电隐蔽工程质保少于5年属违规"},
+        {"id": "L004", "description": "材料变更条款缺失——装修公司更换材料品牌/规格无需业主书面确认"},
+        {"id": "L005", "description": "施工工艺标准不约定——如防水只写「做防水」，不写涂刷遍数、上墙高度，施工中随意缩水"},
+        {"id": "L006", "description": "售后服务范围不明确——竣工后出现的问题哪些免费、哪些收费没有界定"},
+        {"id": "L007", "description": "合同附件未经双方签字——设计图纸、材料清单、施工工艺标准作为附件但未签认，后期无法追责"},
+        {"id": "L008", "description": "增项变更无书面确认流程——口头答应加项，结算时漫天要价无证据"}
+      ]
+    },
+    "extra_item_patterns": {
+      "label": "常见增项套路",
+      "items": [
+        {"id": "E001", "description": "墙面冲筋找平——墙面不平需要冲筋，每平米加收30-60元，全屋可能增加3000-8000元", "typical_amount": "3000-8000元", "trigger_phase": "瓦工阶段", "probability": "高"},
+        {"id": "E002", "description": "地面自流平——铺地板前地面不平需要自流平，每平米加收30-50元", "typical_amount": "2000-5000元", "trigger_phase": "地板铺设前", "probability": "高"},
+        {"id": "E003", "description": "阴阳角找直——墙体阴阳角不垂直需要找直，通常按米收费", "typical_amount": "1000-3000元", "trigger_phase": "油漆阶段", "probability": "中"},
+        {"id": "E004", "description": "垃圾外运——拆旧产生的建筑垃圾外运，物业指定的清运车单次800-1500元", "typical_amount": "2400-4500元（约3车）", "trigger_phase": "拆旧/施工全程", "probability": "极高"},
+        {"id": "E005", "description": "材料上楼费——无电梯或电梯使用不便时，材料搬运每层加收费用", "typical_amount": "500-2000元", "trigger_phase": "材料进场", "probability": "中"},
+        {"id": "E006", "description": "开关面板安装费——水电预算通常不含开关面板/灯具/卫浴的安装", "typical_amount": "500-1500元", "trigger_phase": "安装阶段", "probability": "高"},
+        {"id": "E007", "description": "美缝/环氧彩砂——报价通常不含美缝，后期单独加收每平米30-80元", "typical_amount": "2000-6000元", "trigger_phase": "收尾阶段", "probability": "极高"},
+        {"id": "E008", "description": "开荒保洁——装修结束后的大扫除不在报价内", "typical_amount": "500-1500元", "trigger_phase": "竣工前", "probability": "高"},
+        {"id": "E009", "description": "成品保护费——施工中对已安装设备（门窗/暖气/空调）的保护", "typical_amount": "300-800元", "trigger_phase": "施工前期", "probability": "中"},
+        {"id": "E010", "description": "强弱电箱移位——原有电箱位置不合理需要移位，含电箱更换", "typical_amount": "1500-4000元", "trigger_phase": "水电阶段", "probability": "中"},
+        {"id": "E011", "description": "防水加高——报价仅含淋浴区防水墙高1.8m，实际建议做到顶", "typical_amount": "500-1500元", "trigger_phase": "瓦工阶段", "probability": "中"},
+        {"id": "E012", "description": "木工打底——做背景墙/包管道/窗帘盒之前需要木工板打底，通常漏报", "typical_amount": "1000-3000元", "trigger_phase": "木工阶段", "probability": "中"},
+        {"id": "E013", "description": "门窗套/窗台石加宽——报价中门窗套只含标准宽度，实际超宽按米加钱", "typical_amount": "500-2000元", "trigger_phase": "安装阶段", "probability": "中"}
+      ]
     }
   }
 }

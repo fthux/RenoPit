@@ -10,7 +10,7 @@ from .celery_app import celery_app
 from ..core.database import SessionLocal
 from ..models.project import Project
 from ..models.analysis import Analysis
-from ..services.analysis_engine import run_analysis_sync, InputValidationError
+from ..services.analysis_engine import run_analysis_sync, run_document_analysis_sync, InputValidationError
 from ..services.sse_manager import sse_manager
 
 logger = logging.getLogger(__name__)
@@ -115,3 +115,61 @@ def run_analysis_task(self, project_id: str):
 
     finally:
         db.close()
+
+
+@celery_app.task(bind=True, max_retries=0)
+def run_document_analysis_task(self, project_id: str, project_file_id: str):
+    """Celery 任务：执行合同/报价单文档分析
+
+    流程：
+    1. 调用 analysis_engine.run_document_analysis_sync()
+    2. 推送 SSE: status_change → completed/failed
+
+    Args:
+        project_id: 项目 ID
+        project_file_id: 要分析的文件 ID
+    """
+    try:
+        logger.info(
+            "Starting document analysis for project=%s, file=%s",
+            project_id, project_file_id,
+        )
+        result = run_document_analysis_sync(project_id, project_file_id)
+
+        if result.get("status") == "completed":
+            _publish_sse(project_id, "document_analysis_complete", {
+                "project_id": project_id,
+                "project_file_id": project_file_id,
+                "status": "completed",
+                "message": f"文档分析完成，发现 {result.get('risks_count', 0)} 个风险点",
+                "risks_count": result.get("risks_count", 0),
+                "timestamp": datetime.utcnow().isoformat(),
+            })
+        else:
+            _publish_sse(project_id, "document_analysis_complete", {
+                "project_id": project_id,
+                "project_file_id": project_file_id,
+                "status": "failed",
+                "message": result.get("error_message", "文档分析失败"),
+                "timestamp": datetime.utcnow().isoformat(),
+            })
+
+        logger.info(
+            "Document analysis completed for file=%s: %s",
+            project_file_id, result.get("status"),
+        )
+        return result
+
+    except Exception as e:
+        logger.exception(
+            "Document analysis failed for project=%s, file=%s",
+            project_id, project_file_id,
+        )
+        _publish_sse(project_id, "document_analysis_complete", {
+            "project_id": project_id,
+            "project_file_id": project_file_id,
+            "status": "failed",
+            "message": f"文档分析过程出错: {str(e)}",
+            "timestamp": datetime.utcnow().isoformat(),
+        })
+        return {"status": "failed", "error": str(e)}

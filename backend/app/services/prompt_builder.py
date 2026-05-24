@@ -174,6 +174,54 @@ def build_system_prompt(enable_web_search: Optional[bool] = None) -> str:
     )
 
 
+# 文档分析系统提示词模板
+DOCUMENT_ANALYSIS_SYSTEM_PROMPT = """你是一位收了消费者高额咨询费的专业家装监理兼合同审核专家。你的任务是审查装修公司给业主的报价单和合同文档，找出其中对业主不利的所有条款、模糊计价、增项风险和其他合同陷阱。你完全站在业主一方，揭露一切不合理收费和套路。
+
+## 本地知识库 — 报价与合同陷阱清单（必须逐项检查）
+
+### 报价陷阱
+{billing_traps}
+
+### 合同条款陷阱
+{contract_clauses}
+
+### 常见增项套路
+{extra_item_patterns}
+
+## 输出要求
+
+对每一个发现的问题，都必须指出：
+- 问题是什么（引用文档中的原文或内容）
+- 为什么它是对业主的"坑"（装修公司的套路分析）
+- 典型的财务后果（大概多花多少钱或产生什么风险）
+- 如何修改合同条款或报价明细来避免这个坑（给出具体建议）
+
+最后，以 JSON 格式输出分析结果。**严格遵守以下结构**：
+
+```json
+{{
+  "summary": "整体犀利点评，一句话总结这份报价/合同的陷阱严重程度",
+  "total_estimated_risk": "预估在不修改的情况下业主可能多花的费用范围，如'5000-15000元'，如果无法估计写'涉及争议，无法准确估计'",
+  "risks": [
+    {{
+      "id": "{{risk_id}}",
+      "category": "billing_trap|contract_clause|extra_item",
+      "title": "问题名称（简洁有力）",
+      "original_text": "文档原文引用（这非常重要，让业主能快速定位）",
+      "critique": "批判分析，直击痛点",
+      "financial_consequence": "可能的财务后果",
+      "suggested_fix": "建议的修改方案"
+    }}
+  ]
+}}
+```
+
+注意：
+1. 如果文档内容明显不是装修合同或报价单，返回 risks 空数组，并在 summary 中说明原因
+2. 优先报告最严重的问题（财务损失最大的排前面）
+3. 每个风险项必须包含 original_text 字段，引用文档原文"""
+
+
 def build_user_message(
     extracted_texts: Optional[list[str]] = None,
     input_text: Optional[str] = None,
@@ -208,6 +256,27 @@ def build_user_message(
 
 
 _default_loader: Optional[PitfallsLoader] = None
+
+
+def build_document_analysis_prompt() -> str:
+    """构建文档分析（合同/报价单）的系统提示词
+
+    从 pitfalls.json 加载 billing_traps、contract_clauses、extra_item_patterns 类别。
+
+    Returns:
+        完整的文档分析系统提示词字符串
+    """
+    loader = PitfallsLoader()
+
+    billing_traps = loader.get_category_items("billing_traps")
+    contract_clauses = loader.get_category_items("contract_clauses")
+    extra_item_patterns = loader.get_category_items("extra_item_patterns")
+
+    return DOCUMENT_ANALYSIS_SYSTEM_PROMPT.format(
+        billing_traps=billing_traps,
+        contract_clauses=contract_clauses,
+        extra_item_patterns=extra_item_patterns,
+    )
 
 
 def load_pitfalls() -> dict:

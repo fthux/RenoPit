@@ -32,7 +32,7 @@ app.include_router(projects_router)
 async def startup():
     """启动时自动创建所有数据库表（开发阶段使用，生产环境用 Alembic 迁移）"""
     # 确保所有模型已导入才能被 Base.metadata 发现
-    from .models import Project, ProjectImage, ProjectFile, Analysis, Report  # noqa: F401
+    from .models import Project, ProjectImage, ProjectFile, Analysis, DocumentAnalysis, Report  # noqa: F401
     Base.metadata.create_all(bind=engine)
 
 

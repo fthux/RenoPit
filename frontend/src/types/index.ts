@@ -91,13 +91,50 @@ export interface Report {
   generated_at: string;
 }
 
+// --- Document Analysis ---
+export type DocRiskCategory = 'billing_trap' | 'contract_clause' | 'extra_item';
+export type DocumentAnalysisStatus = 'pending' | 'running' | 'completed' | 'failed';
+
+export interface DocumentRiskItem {
+  id: string;
+  category: DocRiskCategory;
+  title: string;
+  original_text: string;
+  critique?: string;
+  financial_consequence?: string;
+  suggested_fix?: string;
+}
+
+export interface DocumentAnalysisResult {
+  id: string;
+  project_id: string;
+  project_file_id: string;
+  status: DocumentAnalysisStatus;
+  doc_type: string;
+  confidence: number;
+  summary: string;
+  total_estimated_risk: string;
+  risks_count: number;
+  risks: DocumentRiskItem[];
+  classifications?: Record<string, unknown>;
+  error_message?: string;
+  completed_at?: string;
+  created_at: string;
+}
+
+export interface DocumentAnalysisList {
+  items: DocumentAnalysisResult[];
+  total: number;
+}
+
 // --- SSE Events ---
 export type SSEEventType =
   | 'parsing'
   | 'analyzing'
   | 'progress'
   | 'completed'
-  | 'failed';
+  | 'failed'
+  | 'document_analysis_complete';
 
 export interface SSEMessage {
   event: SSEEventType;

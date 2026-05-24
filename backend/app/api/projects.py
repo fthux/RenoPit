@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """
 Project API — matches frontend routes at /api/projects/*
 """
@@ -19,7 +20,7 @@ from sqlalchemy.orm import Session
 
 from ..core.config import settings
 from ..core.database import get_db
-from ..models import Project, ProjectImage, ProjectFile, Analysis, Report
+from ..models import Project, ProjectImage, ProjectFile, Analysis, DocumentAnalysis, Report
 from ..schemas import (
     ProjectCreateRequest,
     ProjectUpdateRequest,
@@ -27,6 +28,9 @@ from ..schemas import (
     ProjectListResponse,
     DuplicateProjectRequest,
     AnalysisResponse,
+    DocumentRiskItem,
+    DocumentAnalysisResponse,
+    DocumentAnalysisListResponse,
 )
 from ..services.file_storage import save_upload_file
 from ..services.file_parser import extract_text
@@ -641,6 +645,43 @@ def _infer_category(problem: dict) -> str:
     return "其他"
 
 
+def _serialize_document_analyses(document_analyses, project_id: str) -> list:
+    """将 DocumentAnalysis 模型列表序列化为前端/PDF 共用的格式"""
+    results = []
+    for da in document_analyses:
+        # 序列化 risks 列表
+        risks = []
+        if da.risks_json and isinstance(da.risks_json, dict):
+            for r in da.risks_json.get("risks", []) or []:
+                if isinstance(r, dict):
+                    risks.append({
+                        "id": r.get("id", ""),
+                        "category": r.get("category", ""),
+                        "title": r.get("title", ""),
+                        "original_text": r.get("original_text", ""),
+                        "critique": r.get("critique", ""),
+                        "financial_consequence": r.get("financial_consequence", ""),
+                        "suggested_fix": r.get("suggested_fix", ""),
+                    })
+
+        results.append({
+            "id": da.id,
+            "project_id": da.project_id,
+            "project_file_id": da.project_file_id,
+            "status": da.status,
+            "doc_type": da.doc_type,
+            "confidence": da.confidence,
+            "summary": da.summary,
+            "total_estimated_risk": da.total_estimated_risk,
+            "risks_count": da.risks_count,
+            "risks": risks,
+            "error_message": da.error_message,
+            "completed_at": da.completed_at.isoformat() if da.completed_at else None,
+            "created_at": da.created_at.isoformat() if da.created_at else None,
+        })
+    return results
+
+
 def _build_result_data(analysis) -> dict:
     """从 Analysis 原始数据构建前端/PDF 共用的结果数据结构。
 
@@ -738,7 +779,20 @@ async def get_analysis_result(project_id: str, db: Session = Depends(get_db)):
             "created_at": analysis.created_at,
         }
 
-    return _build_result_data(analysis)
+    # 文档分析结果
+    document_analyses = (
+        db.query(DocumentAnalysis)
+        .filter(
+            DocumentAnalysis.project_id == project_id,
+            DocumentAnalysis.status == "completed",
+        )
+        .order_by(DocumentAnalysis.completed_at.desc())
+        .all()
+    )
+
+    result = _build_result_data(analysis)
+    result["document_analyses"] = _serialize_document_analyses(document_analyses, project_id)
+    return result
 
 
 # ── GET /api/projects/:id/report — report info (JSON) ──────────────
@@ -838,9 +892,12 @@ async def download_report_pdf(project_id: str, request: Request, db: Session = D
             raise HTTPException(status_code=503, detail="获取图片数据失败")
         images_data = images_resp.json()
 
+    # 文档分析数据已包含在 result_data["document_analyses"] 中
+    document_analyses_data = result_data.get("document_analyses", [])
+
     # 生成 PDF
     try:
-        pdf_bytes = generate_pdf(project_id, result_data, images_data)
+        pdf_bytes = generate_pdf(project_id, result_data, images_data, document_analyses_data)
     except Exception as e:
         logger.exception(f"PDF generation error for project {project_id}: {e}")
         raise HTTPException(status_code=503, detail=f"PDF 生成失败：{str(e)}")
@@ -956,6 +1013,104 @@ async def delete_image(project_id: str, image_id: str, db: Session = Depends(get
     db.delete(image)
     db.commit()
     return {"detail": "ok"}
+
+
+# ── POST /api/projects/:id/analyze/document/:file_id — trigger document analysis ──
+@router.post("/{project_id}/analyze/document/{file_id}")
+async def trigger_document_analysis(project_id: str, file_id: str, db: Session = Depends(get_db)):
+    """启动合同/报价单文档分析（Celery 异步执行）"""
+    project = db.query(Project).filter(Project.id == project_id).first()
+    if not project:
+        raise HTTPException(status_code=404, detail="项目不存在")
+
+    file_record = db.query(ProjectFile).filter(
+        ProjectFile.id == file_id,
+        ProjectFile.project_id == project_id,
+    ).first()
+    if not file_record:
+        raise HTTPException(status_code=404, detail="文件不存在")
+
+    # 入队 Celery 任务
+    try:
+        from ..tasks.analysis import run_document_analysis_task
+        run_document_analysis_task.delay(project_id, file_id)
+        logger.info(f"Document analysis task enqueued for project={project_id}, file={file_id}")
+    except Exception as e:
+        logger.error(f"Failed to enqueue document analysis task: {e}")
+        raise HTTPException(status_code=500, detail=f"无法启动文档分析任务: {e}")
+
+    return {"detail": "ok", "status": "analyzing"}
+
+
+# ── GET /api/projects/:id/document-analysis — list document analyses ──
+@router.get("/{project_id}/document-analysis", response_model=DocumentAnalysisListResponse)
+async def list_document_analyses(project_id: str, db: Session = Depends(get_db)):
+    """获取项目的所有文档分析结果列表"""
+    project = db.query(Project).filter(Project.id == project_id).first()
+    if not project:
+        raise HTTPException(status_code=404, detail="项目不存在")
+
+    analyses = (
+        db.query(DocumentAnalysis)
+        .filter(DocumentAnalysis.project_id == project_id)
+        .order_by(DocumentAnalysis.created_at.desc())
+        .all()
+    )
+    return DocumentAnalysisListResponse(
+        items=[_doc_analysis_to_response(a) for a in analyses],
+        total=len(analyses),
+    )
+
+
+# ── GET /api/projects/:id/document-analysis/:analysis_id ──
+@router.get("/{project_id}/document-analysis/{analysis_id}", response_model=DocumentAnalysisResponse)
+async def get_document_analysis(project_id: str, analysis_id: str, db: Session = Depends(get_db)):
+    """获取单个文档分析详情"""
+    analysis = (
+        db.query(DocumentAnalysis)
+        .filter(
+            DocumentAnalysis.id == analysis_id,
+            DocumentAnalysis.project_id == project_id,
+        )
+        .first()
+    )
+    if not analysis:
+        raise HTTPException(status_code=404, detail="文档分析结果不存在")
+
+    return _doc_analysis_to_response(analysis)
+
+
+def _doc_analysis_to_response(a: DocumentAnalysis) -> DocumentAnalysisResponse:
+    """将 DocumentAnalysis 模型转换为 API 响应 Schema"""
+    risks = []
+    if a.risks_json and isinstance(a.risks_json, dict):
+        for r in a.risks_json.get("risks", []) or []:
+            if isinstance(r, dict):
+                risks.append(DocumentRiskItem(
+                    id=r.get("id", ""),
+                    category=r.get("category", ""),
+                    title=r.get("title", ""),
+                    original_text=r.get("original_text", ""),
+                    critique=r.get("critique", ""),
+                    financial_consequence=r.get("financial_consequence", ""),
+                    suggested_fix=r.get("suggested_fix", ""),
+                ))
+    return DocumentAnalysisResponse(
+        id=a.id,
+        project_id=a.project_id,
+        project_file_id=a.project_file_id,
+        status=a.status,
+        doc_type=a.doc_type,
+        confidence=a.confidence,
+        summary=a.summary,
+        total_estimated_risk=a.total_estimated_risk,
+        risks_count=a.risks_count,
+        risks=risks,
+        classifications=a.classifications_json,
+        error_message=a.error_message,
+        completed_at=a.completed_at,
+        created_at=a.created_at,
+    )
 
 
 # ── helper ──────────────────────────────────────────────────────────

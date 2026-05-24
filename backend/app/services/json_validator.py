@@ -186,6 +186,136 @@ def apply_fallback(data: dict) -> dict:
     return data
 
 
+def validate_document_structure(data: dict) -> Tuple[bool, list[str]]:
+    """校验文档分析 JSON 字段完整性
+
+    检查必需字段和关键约束：
+    - risks 数组不能为空
+    - summary 不能为空
+    - 每个 risk 的 title 和 original_text 不能为空
+
+    Args:
+        data: 已解析的 JSON 字典
+
+    Returns:
+        (is_valid, missing_fields) 元组。
+    """
+    issues: list[str] = []
+
+    # 检查顶层字段
+    if not data.get("summary"):
+        issues.append("summary — 缺失或为空")
+
+    if "total_estimated_risk" not in data:
+        issues.append("total_estimated_risk — 缺失")
+
+    risks = data.get("risks")
+    if not risks or not isinstance(risks, list) or len(risks) == 0:
+        issues.append("risks — 缺失或为空数组")
+        return False, issues
+
+    # 检查每个 risk 的字段
+    for i, risk in enumerate(risks):
+        if not isinstance(risk, dict):
+            issues.append(f"risks[{i}] — 不是对象")
+            continue
+
+        if not risk.get("title"):
+            issues.append(f"risks[{i}].title — 缺失或为空")
+
+        if not risk.get("original_text"):
+            issues.append(f"risks[{i}].original_text — 缺失或为空")
+
+        if not risk.get("category"):
+            issues.append(f"risks[{i}].category — 缺失")
+        elif risk["category"] not in ("billing_trap", "contract_clause", "extra_item"):
+            issues.append(f"risks[{i}].category — 未知类型 '{risk['category']}'")
+
+        if not risk.get("id"):
+            issues.append(f"risks[{i}].id — 缺失")
+
+    return len(issues) == 0, issues
+
+
+def apply_document_fallback(data: dict) -> dict:
+    """对文档分析 JSON 缺失的非关键字段进行降级填充
+
+    Args:
+        data: 已解析的 JSON 字典
+
+    Returns:
+        填充后的字典
+    """
+    if not data.get("summary"):
+        data["summary"] = "文档分析完成，请查看详细风险列表。"
+
+    if "total_estimated_risk" not in data:
+        data["total_estimated_risk"] = "暂无法估量"
+
+    if "risks" not in data or not isinstance(data.get("risks"), list):
+        data["risks"] = []
+
+    for i, risk in enumerate(data.get("risks", [])):
+        if not isinstance(risk, dict):
+            continue
+
+        if not risk.get("id"):
+            risk["id"] = f"risk-{i + 1}"
+
+        if "category" not in risk or not risk.get("category"):
+            risk["category"] = "contract_clause"
+
+        if "title" not in risk or not risk.get("title"):
+            risk["title"] = f"未命名风险 #{i + 1}"
+
+        if "original_text" not in risk or not risk.get("original_text"):
+            risk["original_text"] = "（原文无法定位）"
+
+        if "critique" not in risk or not risk.get("critique"):
+            risk["critique"] = "信息缺失，暂无法提供批判分析"
+
+        if "financial_consequence" not in risk or not risk.get("financial_consequence"):
+            risk["financial_consequence"] = "暂无法估量"
+
+        if "suggested_fix" not in risk or not risk.get("suggested_fix"):
+            risk["suggested_fix"] = "当前信息不足，请进一步确认合同条款"
+
+    return data
+
+
+def validate_document_report(llm_response_text: str) -> Tuple[Optional[dict], Optional[str]]:
+    """文档分析 JSON 完整的校验与修复流程
+
+    解析 → 校验 → 降级填充
+
+    Args:
+        llm_response_text: LLM 返回的原始文本
+
+    Returns:
+        (result_dict, error_message) 元组。
+    """
+    # Step 1: 解析 JSON
+    data, parse_error = parse_json(llm_response_text)
+    if data is None:
+        return None, parse_error
+
+    # Step 2: 字段完整性校验
+    is_valid, issues = validate_document_structure(data)
+
+    if not is_valid:
+        risks = data.get("risks", [])
+        if not risks or not isinstance(risks, list) or len(risks) == 0:
+            return None, f"文档 JSON 校验失败 — 关键信息缺失: {', '.join(issues)}"
+
+    # Step 3: 降级填充
+    data = apply_document_fallback(data)
+
+    if not data.get("risks"):
+        return None, "文档 JSON 校验失败 — risks 数组为空"
+
+    return data, None
+
+
 def validate_and_repair(llm_response_text: str) -> Tuple[Optional[dict], Optional[str]]:
     """完整的校验与修复流程
 
