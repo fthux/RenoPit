@@ -1,8 +1,9 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useParams, Link, useNavigate } from 'react-router-dom'
-import { ArrowLeft, Upload, FileText, Image, Play, Download, Loader2, CheckCircle2, Square, ChevronRight, AlertCircle } from 'lucide-react'
+import { ArrowLeft, Upload, FileText, Image, Play, Loader2, CheckCircle2, Square, ChevronRight, AlertCircle, Pencil, Check, X, FileSearch, RefreshCw, Download, Eye } from 'lucide-react'
 import type { Project, ProjectFile, ProjectImage } from '../types'
 import { useToast } from '../components/Toast'
+import ConfirmDialog from '../components/ConfirmDialog'
 
 const API = '/api'
 
@@ -22,6 +23,18 @@ export default function ProjectPage() {
   const [sseProgress, setSseProgress] = useState(0)
   const [sseMessage, setSseMessage] = useState('')
   const eventSourceRef = useRef<EventSource | null>(null)
+
+  // Inline editing state
+  const [editingField, setEditingField] = useState<'name' | 'description' | null>(null)
+  const [editValue, setEditValue] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  // Re-analysis confirmation
+  const [showReanalyzeConfirm, setShowReanalyzeConfirm] = useState(false)
+
+  // Preview state
+  const [previewImage, setPreviewImage] = useState<ProjectImage | null>(null)
+  const [previewFileContent, setPreviewFileContent] = useState<{ name: string; content: string } | null>(null)
 
   const fetchProject = useCallback(async () => {
     const res = await fetch(`${API}/projects/${projectId}`)
@@ -227,6 +240,51 @@ export default function ProjectPage() {
     }
   }
 
+  function startEditing(field: 'name' | 'description', currentValue: string) {
+    setEditingField(field)
+    setEditValue(currentValue)
+  }
+
+  function cancelEditing() {
+    setEditingField(null)
+    setEditValue('')
+  }
+
+  async function saveEditing() {
+    if (!editingField || !project) return
+
+    // 标题不能为空
+    if (editingField === 'name' && !editValue.trim()) {
+      showToast('error', '标题不能为空')
+      return
+    }
+
+    setSaving(true)
+    try {
+      const body: Record<string, string> = {}
+      body[editingField] = editValue
+      const res = await fetch(`${API}/projects/${projectId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+      if (res.ok) {
+        const updated = await res.json()
+        setProject(updated)
+        showToast('success', editingField === 'name' ? '标题已更新' : '描述已更新')
+        setEditingField(null)
+        setEditValue('')
+      } else {
+        const err = await res.json().catch(() => ({ detail: '保存失败' }))
+        showToast('error', err.detail || '保存失败')
+      }
+    } catch {
+      showToast('error', '保存失败，请重试')
+    } finally {
+      setSaving(false)
+    }
+  }
+
   if (loading && !project) {
     return <div className="flex items-center justify-center min-h-[70vh]"><Loader2 className="w-8 h-8 animate-spin text-slate-300" /></div>
   }
@@ -260,9 +318,71 @@ export default function ProjectPage() {
 
       {/* Project Header */}
       <div className="mb-8">
-        <h1 className="text-3xl font-bold text-slate-800 tracking-tight">{project.name}</h1>
-        {project.description && (
-          <p className="text-slate-500 text-sm mt-1.5">{project.description}</p>
+        {/* Title */}
+        {editingField === 'name' ? (
+          <div className="flex items-center gap-2 mb-1">
+            <input
+              type="text"
+              value={editValue}
+              onChange={(e) => setEditValue(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') saveEditing(); if (e.key === 'Escape') cancelEditing() }}
+              className="text-3xl font-bold text-slate-800 bg-white border-2 border-blue-400 rounded-xl px-3 py-1.5 outline-none focus:border-blue-500 w-full max-w-xl"
+              autoFocus
+              disabled={saving}
+              maxLength={255}
+            />
+            <button onClick={saveEditing} disabled={saving} className="p-2 rounded-lg bg-blue-500 text-white hover:bg-blue-600 transition-colors disabled:opacity-50" title="保存">
+              <Check className="w-4 h-4" />
+            </button>
+            <button onClick={cancelEditing} disabled={saving} className="p-2 rounded-lg bg-slate-100 text-slate-500 hover:bg-slate-200 transition-colors disabled:opacity-50" title="取消">
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        ) : (
+          <h1
+            className="text-3xl font-bold text-slate-800 tracking-tight group flex items-center gap-2 cursor-pointer hover:text-blue-600 transition-colors"
+            onClick={() => startEditing('name', project.name)}
+            title="点击编辑标题"
+          >
+            {project.name}
+            <Pencil className="w-4 h-4 text-slate-300 opacity-0 group-hover:opacity-100 transition-opacity" />
+          </h1>
+        )}
+
+        {/* Description */}
+        {editingField === 'description' ? (
+          <div className="flex items-start gap-2 mt-2">
+            <textarea
+              value={editValue}
+              onChange={(e) => setEditValue(e.target.value)}
+              onKeyDown={(e) => { if ((e.key === 'Enter' && e.metaKey) || (e.key === 'Enter' && e.ctrlKey)) saveEditing(); if (e.key === 'Escape') cancelEditing() }}
+              className="text-sm text-slate-500 bg-white border-2 border-blue-400 rounded-xl px-3 py-2 outline-none focus:border-blue-500 w-full max-w-xl resize-none"
+              rows={2}
+              autoFocus
+              disabled={saving}
+              maxLength={300}
+              placeholder="项目描述（选填，最多300字）"
+            />
+            <div className="flex items-center gap-1">
+              <button onClick={saveEditing} disabled={saving} className="p-2 rounded-lg bg-blue-500 text-white hover:bg-blue-600 transition-colors disabled:opacity-50" title="保存">
+                <Check className="w-4 h-4" />
+              </button>
+              <button onClick={cancelEditing} disabled={saving} className="p-2 rounded-lg bg-slate-100 text-slate-500 hover:bg-slate-200 transition-colors disabled:opacity-50" title="取消">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        ) : (
+          <p
+            className="text-slate-500 text-sm mt-1.5 group flex items-center gap-1 cursor-pointer hover:text-blue-500 transition-colors min-h-[1.25rem]"
+            onClick={() => startEditing('description', project.description || '')}
+            title="点击编辑描述"
+          >
+            {project.description || (
+              <span className="text-slate-300 italic group-hover:text-blue-400">添加描述...</span>
+            )}
+            <Pencil className="w-3.5 h-3.5 text-slate-300 opacity-0 group-hover:opacity-100 transition-opacity" />
+          </p>
         )}
       </div>
 
@@ -280,18 +400,44 @@ export default function ProjectPage() {
             <Square className="w-4 h-4" /> {stopping ? '停止中...' : '停止分析'}
           </button>
         ) : (
-          <button onClick={startAnalysis} disabled={!canAnalyze}
-            className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-blue-600 to-blue-500 text-white rounded-xl text-sm font-medium hover:from-blue-700 hover:to-blue-600 disabled:opacity-40 transition-all hover:scale-[1.02] active:scale-[0.98] shadow-lg shadow-blue-500/20">
-            <Play className="w-4 h-4" /> 开始分析
+          <button
+            onClick={() => {
+              if (project?.status === 'completed') {
+                setShowReanalyzeConfirm(true)
+              } else {
+                startAnalysis()
+              }
+            }}
+            disabled={!canAnalyze}
+            className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-blue-600 to-blue-500 text-white rounded-xl text-sm font-medium hover:from-blue-700 hover:to-blue-600 disabled:opacity-40 transition-all hover:scale-[1.02] active:scale-[0.98] shadow-lg shadow-blue-500/20"
+          >
+            {project?.status === 'completed' ? (
+              <><RefreshCw className="w-4 h-4" /> 重新分析</>
+            ) : (
+              <><Play className="w-4 h-4" /> 开始分析</>
+            )}
           </button>
         )}
 
         {project.status === 'completed' && (
           <Link to={`/project/${projectId}/analysis`} className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-green-600 to-emerald-500 text-white rounded-xl text-sm font-medium hover:from-green-700 hover:to-emerald-600 no-underline transition-all hover:scale-[1.02] active:scale-[0.98] shadow-lg shadow-green-500/20">
-            <Download className="w-4 h-4" /> 查看报告
+            <FileSearch className="w-4 h-4" /> 查看报告
           </Link>
         )}
       </div>
+
+      {/* Re-analysis Confirm Dialog */}
+      <ConfirmDialog
+        open={showReanalyzeConfirm}
+        title="确认重新分析"
+        message="即将对当前项目重新执行分析，之前的分析报告将会被覆盖。确定要继续吗？"
+        confirmLabel="重新分析"
+        onConfirm={() => {
+          setShowReanalyzeConfirm(false)
+          startAnalysis()
+        }}
+        onCancel={() => setShowReanalyzeConfirm(false)}
+      />
 
       {/* SSE Progress */}
       {isAnalyzing && (
@@ -356,6 +502,33 @@ export default function ProjectPage() {
                   <p className="text-xs text-slate-400 mt-0.5">{formatSize(f.file_size)}{f.file_type ? ` · ${f.file_type.toUpperCase()}` : ''}</p>
                 </div>
                 {f.parsed_content && <CheckCircle2 className="w-5 h-5 text-green-500 flex-shrink-0" />}
+                <div className="flex items-center gap-1 flex-shrink-0">
+                  {(f.file_type === 'txt' || f.file_type === 'md') && (
+                    <button
+                      onClick={async () => {
+                        try {
+                          const res = await fetch(`${API}/projects/${projectId}/files/${f.id}`)
+                          if (res.ok) {
+                            const text = await res.text()
+                            setPreviewFileContent({ name: f.original_name, content: text })
+                          }
+                        } catch { /* ignore */ }
+                      }}
+                      className="p-1.5 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"
+                      title="预览内容"
+                    >
+                      <Eye className="w-4 h-4" />
+                    </button>
+                  )}
+                  <a
+                    href={`${API}/projects/${projectId}/files/${f.id}`}
+                    download
+                    className="p-1.5 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"
+                    title="下载文件"
+                  >
+                    <Download className="w-4 h-4" />
+                  </a>
+                </div>
               </div>
             ))}
             {images.map((img) => (
@@ -367,11 +540,71 @@ export default function ProjectPage() {
                   <p className="text-sm text-slate-700 font-medium truncate">{img.original_name}</p>
                   <p className="text-xs text-slate-400 mt-0.5">{formatSize(img.file_size)}{img.width && img.height ? ` · ${img.width}x${img.height}` : ''}</p>
                 </div>
+                <div className="flex items-center gap-1 flex-shrink-0">
+                  <button
+                    onClick={() => setPreviewImage(img)}
+                    className="p-1.5 rounded-lg text-slate-400 hover:text-purple-600 hover:bg-purple-50 transition-colors"
+                    title="预览图片"
+                  >
+                    <Eye className="w-4 h-4" />
+                  </button>
+                  <a
+                    href={`${API}/projects/${projectId}/images/${img.id}`}
+                    download
+                    className="p-1.5 rounded-lg text-slate-400 hover:text-purple-600 hover:bg-purple-50 transition-colors"
+                    title="下载图片"
+                  >
+                    <Download className="w-4 h-4" />
+                  </a>
+                </div>
               </div>
             ))}
           </div>
         )}
       </div>
+
+      {/* Image Preview Modal */}
+      {previewImage && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4" onClick={() => setPreviewImage(null)}>
+          <div className="relative max-w-[90vw] max-h-[90vh]" onClick={(e) => e.stopPropagation()}>
+            <button
+              onClick={() => setPreviewImage(null)}
+              className="absolute -top-3 -right-3 w-8 h-8 rounded-full bg-white shadow-lg flex items-center justify-center text-slate-500 hover:text-slate-700 transition-colors z-10"
+            >
+              <X className="w-4 h-4" />
+            </button>
+            <img
+              src={`${API}/projects/${projectId}/images/${previewImage.id}`}
+              alt={previewImage.original_name}
+              className="max-w-[90vw] max-h-[85vh] rounded-xl shadow-2xl object-contain"
+            />
+            <p className="text-white text-sm text-center mt-3 font-medium">{previewImage.original_name}</p>
+          </div>
+        </div>
+      )}
+
+      {/* Text Preview Modal */}
+      {previewFileContent && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={() => setPreviewFileContent(null)}>
+          <div
+            className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[80vh] flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-5 py-3 border-b border-slate-100">
+              <h3 className="text-sm font-semibold text-slate-700 truncate">{previewFileContent.name}</h3>
+              <button
+                onClick={() => setPreviewFileContent(null)}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="p-5 overflow-auto flex-1">
+              <pre className="text-sm text-slate-700 whitespace-pre-wrap font-mono leading-relaxed">{previewFileContent.content}</pre>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

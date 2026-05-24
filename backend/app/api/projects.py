@@ -19,6 +19,7 @@ from ..core.database import get_db
 from ..models import Project, ProjectImage, ProjectFile, Analysis, Report
 from ..schemas import (
     ProjectCreateRequest,
+    ProjectUpdateRequest,
     ProjectResponse,
     ProjectListResponse,
     DuplicateProjectRequest,
@@ -205,6 +206,30 @@ async def get_project(project_id: str, db: Session = Depends(get_db)):
     project = db.query(Project).filter(Project.id == project_id).first()
     if not project:
         raise HTTPException(status_code=404, detail="项目不存在")
+    return _project_to_response(project)
+
+
+# ── PUT /api/projects/:id — update project metadata ─────────────────
+@router.put("/{project_id}", response_model=ProjectResponse)
+async def update_project(
+    project_id: str,
+    body: ProjectUpdateRequest = Body(...),
+    db: Session = Depends(get_db),
+):
+    """更新项目标题和描述"""
+    project = db.query(Project).filter(Project.id == project_id).first()
+    if not project:
+        raise HTTPException(status_code=404, detail="项目不存在")
+
+    if body.name is not None:
+        project.name = body.name
+    if body.description is not None:
+        project.description = body.description
+
+    project.updated_at = datetime.utcnow()
+    db.commit()
+    db.refresh(project)
+    logger.info(f"Project updated: id={project_id}, name={project.name}")
     return _project_to_response(project)
 
 

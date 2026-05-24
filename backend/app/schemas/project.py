@@ -46,6 +46,12 @@ class DuplicateProjectRequest(BaseModel):
     copy_files: bool = Field(default=True, description="是否复制关联的文件和图片")
 
 
+class ProjectUpdateRequest(BaseModel):
+    """更新项目请求体"""
+    name: Optional[str] = Field(default=None, max_length=255, description="项目名称")
+    description: Optional[str] = Field(default=None, max_length=500, description="项目描述")
+
+
 class ProjectListResponse(BaseModel):
     """项目列表响应"""
     projects: List[ProjectResponse]

@@ -22,7 +22,7 @@ export interface ProjectFile {
   project_id: string;
   filename: string;
   original_name: string;
-  file_type: 'dxf' | 'dwg' | 'pdf' | 'image';
+  file_type: 'dxf' | 'dwg' | 'pdf' | 'image' | 'txt' | 'md' | 'docx';
   file_size: number;
   parsed_content?: Record<string, unknown>;
   created_at: string;

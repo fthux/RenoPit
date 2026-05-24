@@ -4,6 +4,7 @@ Schemas 导出
 
 from .project import (
     ProjectCreateRequest,
+    ProjectUpdateRequest,
     ProjectStatusResponse,
     ProjectResponse,
     ProjectListResponse,
@@ -22,6 +23,7 @@ from .file import (
 
 __all__ = [
     "ProjectCreateRequest",
+    "ProjectUpdateRequest",
     "ProjectStatusResponse",
     "ProjectResponse",
     "ProjectListResponse",
