@@ -10,6 +10,7 @@ from .celery_app import celery_app
 from ..core.database import SessionLocal
 from ..models.project import Project
 from ..models.analysis import Analysis
+from ..models.project_file import ProjectFile
 from ..services.analysis_engine import run_analysis_sync, run_document_analysis_sync, InputValidationError
 from ..services.sse_manager import sse_manager
 
@@ -40,9 +41,10 @@ def run_analysis_task(self, project_id: str):
     流程：
     1. 更新项目状态为 analyzing
     2. 推送 SSE: status_change → analyzing
-    3. 调用 analysis_engine.run_analysis_sync()
-    4. 推送 SSE: status_change → completed/failed
-    5. 更新项目状态
+    3. 调用 analysis_engine.run_analysis_sync() 执行设计图分析
+    4. 设计图分析成功后，自动查询项目中的可分析文件（PDF/docx/txt/md），
+       对每个文件自动调用 run_document_analysis_sync() 执行文档分析
+    5. 所有分析完成后，更新项目状态并推送 SSE
 
     Args:
         project_id: 项目 ID
@@ -65,17 +67,63 @@ def run_analysis_task(self, project_id: str):
             "timestamp": datetime.utcnow().isoformat(),
         })
 
-        # Step 3: 执行分析
-        logger.info(f"Starting analysis for project={project_id}")
+        # Step 3: 执行设计图分析
+        logger.info(f"Starting design analysis for project={project_id}")
         result = run_analysis_sync(project_id)
 
-        # Step 4: 根据结果推送 SSE + 更新项目状态
+        # Step 4: 设计图分析成功后，自动执行文档分析（合同/报价单）
+        doc_results: list[dict] = []
         if result.get("status") == "completed":
+            try:
+                # 查询项目中已提取文本的可分析文件
+                analyzable_files = db.query(ProjectFile).filter(
+                    ProjectFile.project_id == project_id,
+                    ProjectFile.extracted_text.isnot(None),
+                    ProjectFile.extracted_text != "",
+                    ProjectFile.file_type.in_(["pdf", "docx", "txt", "md"]),
+                ).all()
+
+                if analyzable_files:
+                    logger.info(
+                        "Found %d analyzable files for document analysis",
+                        len(analyzable_files),
+                    )
+                    for pf in analyzable_files:
+                        try:
+                            doc_result = run_document_analysis_sync(project_id, pf.id)
+                            doc_results.append(doc_result)
+                            logger.info(
+                                "Document analysis for file %s: %s",
+                                pf.id, doc_result.get("status"),
+                            )
+                        except Exception as e:
+                            logger.error(
+                                "Document analysis failed for file %s: %s",
+                                pf.id, str(e),
+                            )
+                            doc_results.append({
+                                "status": "failed",
+                                "project_file_id": pf.id,
+                                "error_message": str(e),
+                            })
+            except Exception as e:
+                logger.error(
+                    "Error querying project files for document analysis: %s",
+                    str(e),
+                )
+
+        # Step 5: 根据结果推送 SSE + 更新项目状态
+        if result.get("status") == "completed":
+            # 统计文档分析结果
+            doc_completed = sum(1 for r in doc_results if r.get("status") == "completed")
+            doc_total = len(doc_results)
+            doc_message = f"，合同/报价单分析完成 {doc_completed}/{doc_total}" if doc_total > 0 else ""
+
             _update_project_status(db, project_id, "completed")
             _publish_sse(project_id, "status_change", {
                 "project_id": project_id,
                 "status": "completed",
-                "message": f"分析完成，发现 {result.get('problems_count', 0)} 个问题",
+                "message": f"分析完成，发现 {result.get('problems_count', 0)} 个问题{doc_message}",
                 "problems_count": result.get("problems_count", 0),
                 "timestamp": datetime.utcnow().isoformat(),
             })
@@ -88,7 +136,10 @@ def run_analysis_task(self, project_id: str):
                 "timestamp": datetime.utcnow().isoformat(),
             })
 
-        logger.info(f"Analysis completed for project={project_id}: {result.get('status')}")
+        logger.info(
+            "Analysis completed for project=%s: design=%s, doc_analyses=%d",
+            project_id, result.get("status"), len(doc_results),
+        )
         return result
 
     except InputValidationError as e:

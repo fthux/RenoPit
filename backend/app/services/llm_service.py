@@ -254,7 +254,7 @@ async def _call_gemini(
 
     # 构建生成配置
     generation_config = genai.GenerationConfig(
-        max_output_tokens=4096,
+        max_output_tokens=100000,
         temperature=0.3,
     )
 
@@ -284,6 +284,10 @@ async def _call_gemini(
             ),
         )
 
+        logger.info(
+            "[Gemini] API 调用成功测试: response=%d",
+            response,
+        )
         result = response.text or ""
         logger.info(
             "[Gemini] API 调用成功: response_len=%d",
@@ -523,7 +527,7 @@ async def _call_gemini_text(
     )
 
     generation_config = genai.GenerationConfig(
-        max_output_tokens=4096,
+        max_output_tokens=100000,
         temperature=0.3,
     )
 

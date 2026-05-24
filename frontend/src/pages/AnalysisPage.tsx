@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useParams, Link } from 'react-router-dom'
-import { ArrowLeft, Loader2, AlertTriangle, Zap, AlertCircle, Info, Download, ChevronRight, Shield, ShieldAlert, ShieldCheck } from 'lucide-react'
+import { ArrowLeft, Loader2, AlertTriangle, Zap, AlertCircle, Info, Download, ChevronRight, Shield, ShieldAlert, ShieldCheck, FileText, DollarSign, FileSignature, PlusCircle } from 'lucide-react'
 import type { AnalysisResult, PitfallItem, PitfallSeverity } from '../types'
 
 const API = '/api'
@@ -97,7 +97,7 @@ export default function AnalysisPage() {
     )
   }
 
-  const { id: analysisId, summary, pitfalls, created_at: analysisCreatedAt, completed_at: analysisCompletedAt } = result
+  const { id: analysisId, summary, pitfalls, document_analyses, created_at: analysisCreatedAt, completed_at: analysisCompletedAt } = result
 
   const formatDateTime = (iso: string | undefined) => {
     if (!iso) return '—'
@@ -259,6 +259,110 @@ export default function AnalysisPage() {
           ))}
         </div>
       </div>
+
+      {/* Contract / Quotation Risk Analysis Section */}
+      {document_analyses && document_analyses.length > 0 && (
+        <div className="mt-8">
+          <div className="flex items-center gap-2 mb-4">
+            <FileText className="w-5 h-5 text-violet-500" />
+            <h2 className="text-lg font-semibold text-slate-800">合同 / 报价单风险分析</h2>
+          </div>
+
+          {document_analyses.map((doc) => {
+            const risks = doc.risks || []
+            const categoryConfig: Record<string, { icon: typeof FileText; label: string; color: string; bg: string; border: string }> = {
+              billing_trap: { icon: DollarSign, label: '报价陷阱', color: 'text-rose-600', bg: 'bg-rose-50', border: 'border-rose-200' },
+              contract_clause: { icon: FileSignature, label: '合同条款', color: 'text-amber-600', bg: 'bg-amber-50', border: 'border-amber-200' },
+              extra_item: { icon: PlusCircle, label: '增项风险', color: 'text-purple-600', bg: 'bg-purple-50', border: 'border-purple-200' },
+            }
+
+            return (
+              <div key={doc.id} className="bg-white rounded-2xl border border-slate-200 p-6 mb-4 shadow-sm">
+                {/* Header */}
+                <div className="flex items-start justify-between mb-4">
+                  <div>
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="text-sm font-semibold text-slate-700">
+                        {doc.doc_type === 'quotation' ? '报价单分析' : doc.doc_type === 'contract' ? '合同分析' : '文档分析'}
+                      </span>
+                      <span className="text-xs text-slate-400">
+                        置信度 {Math.round(doc.confidence * 100)}%
+                      </span>
+                    </div>
+                    {doc.summary && (
+                      <p className="text-sm text-slate-600 mt-2 leading-relaxed">{doc.summary}</p>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    {risks.length > 0 ? (
+                      <span className="px-3 py-1 rounded-full bg-red-50 text-red-700 text-xs font-semibold">
+                        {risks.length} 个风险
+                      </span>
+                    ) : (
+                      <span className="px-3 py-1 rounded-full bg-green-50 text-green-700 text-xs font-semibold">
+                        未发现风险
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Estimated total risk */}
+                {doc.total_estimated_risk && (
+                  <div className="flex items-center gap-2 p-3 bg-rose-50 rounded-xl border border-rose-100 mb-4">
+                    <AlertTriangle className="w-4 h-4 text-rose-500 flex-shrink-0" />
+                    <span className="text-sm text-rose-700 font-medium">
+                      预估总风险：{doc.total_estimated_risk}
+                    </span>
+                  </div>
+                )}
+
+                {/* Risk items */}
+                {risks.length > 0 ? (
+                  <div className="space-y-3">
+                    {risks.map((risk) => {
+                      const cfg = categoryConfig[risk.category] || categoryConfig.contract_clause
+                      const Icon = cfg.icon
+                      return (
+                        <div key={risk.id} className={`rounded-xl border ${cfg.border} ${cfg.bg} p-4`}>
+                          <div className="flex items-center gap-2 mb-2">
+                            <div className="w-7 h-7 rounded-lg bg-white flex items-center justify-center">
+                              <Icon className={`w-3.5 h-3.5 ${cfg.color}`} />
+                            </div>
+                            <span className="text-xs font-semibold text-slate-400">{cfg.label}</span>
+                          </div>
+                          <h4 className="text-sm font-semibold text-slate-800 mb-1">{risk.title}</h4>
+                          {risk.original_text && (
+                            <p className="text-xs text-slate-500 italic mb-2"><span className="font-semibold text-slate-700">原文：</span>「{risk.original_text}」</p>
+                          )}
+                          {risk.critique && (
+                            <p className="text-sm text-slate-700 leading-relaxed mb-2"><span className="font-semibold text-slate-700">风险分析：</span>{risk.critique}</p>
+                          )}
+                          {risk.financial_consequence && (
+                            <div className="flex items-center gap-1.5 text-sm text-rose-600 font-medium mb-1">
+                              <DollarSign className="w-3.5 h-3.5" />
+                              财务影响：{risk.financial_consequence}
+                            </div>
+                          )}
+                          {risk.suggested_fix && (
+                            <div className="mt-2 p-3 bg-green-50 rounded-lg border border-green-100">
+                              <p className="text-sm text-slate-700">
+                                <span className="font-semibold text-green-700">✓ 建议：</span>
+                                {risk.suggested_fix}
+                              </p>
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+                ) : (
+                  <p className="text-sm text-slate-400 text-center py-4">未发现明显的合同或报价风险</p>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      )}
     </div>
   )
 }

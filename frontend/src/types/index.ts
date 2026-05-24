@@ -74,6 +74,7 @@ export interface AnalysisResult {
   status: AnalysisStatus;
   summary: AnalysisSummary;
   pitfalls: PitfallItem[];
+  document_analyses?: DocumentAnalysisResult[];
   raw_response?: string;
   created_at?: string;
   started_at?: string;

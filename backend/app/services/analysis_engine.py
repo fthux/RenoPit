@@ -199,8 +199,8 @@ def run_analysis_sync(project_id: str) -> dict:
         # 记录 LLM 原始响应的前500字以便调试
         if llm_response:
             logger.info(
-                "[AnalysisEngine] LLM 响应预览 (前500字): %s",
-                llm_response[:500],
+                "[AnalysisEngine] LLM 响应预览: %s",
+                llm_response,
             )
         else:
             logger.error("[AnalysisEngine] LLM 返回空响应，完整流程将失败")

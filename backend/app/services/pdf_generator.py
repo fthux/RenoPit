@@ -510,12 +510,29 @@ def _build_pitfall_card(item: dict, S: dict):
 
 
 def _build_document_risk_section(story: list, doc: dict, S: dict) -> list:
-    """Build a section for one document's risk analysis in the PDF."""
-    file_name = doc.get("file_name", "未知文档")
-    classification = doc.get("classification", "其他")
-    overall_risk = doc.get("overall_risk", "medium")
-    findings = doc.get("findings", [])
+    """Build a section for one document's risk analysis in the PDF.
+
+    The `doc` dict uses the serialized format from _serialize_document_analyses(),
+    with fields: doc_type, confidence, summary, total_estimated_risk, risks, etc.
+    """
+    # Determine document type label
+    doc_type = doc.get("doc_type", "unknown")
+    doc_type_label = {"quotation": "报价单", "contract": "合同"}.get(doc_type, "文档")
+
+    # No overall_risk field — derive from risks count
+    risks = doc.get("risks", []) or []
+    risks_count = len(risks)
+    summary_text = doc.get("summary", "")
+    total_estimated_risk = doc.get("total_estimated_risk", "")
     created_at = doc.get("created_at", "")[:19]
+
+    # Compute overall severity from risk count
+    if risks_count >= 5:
+        overall_risk = "high"
+    elif risks_count >= 2:
+        overall_risk = "medium"
+    else:
+        overall_risk = "low"
 
     risk_colors = {
         "high": _COLORS["critical"],
@@ -527,15 +544,31 @@ def _build_document_risk_section(story: list, doc: dict, S: dict) -> list:
     risk_label = risk_labels.get(overall_risk, overall_risk)
 
     header_text = (
-        f'<font color="{risk_color}"><b>📄 {_sanitize_html(file_name)}</b></font> '
-        f'<font color="{_COLORS["text_muted"]}">| 分类：{_sanitize_html(classification)}'
-        f' | 风险等级：</font><font color="{risk_color}"><b>{risk_label}</b></font>'
-        f'<font color="{_COLORS["text_muted"]}"> | {created_at}</font>'
+        f'<font color="{risk_color}"><b>📄 {_sanitize_html(doc_type_label)}</b></font> '
+        f'<font color="{_COLORS["text_muted"]}">| 风险等级：</font>'
+        f'<font color="{risk_color}"><b>{risk_label}</b></font>'
+        f'<font color="{_COLORS["text_muted"]}"> | 风险数：{risks_count} | {created_at}</font>'
     )
     story.append(Paragraph(header_text, S["body"]))
     story.append(Spacer(1, 2 * mm))
 
-    if not findings:
+    # Summary text
+    if summary_text:
+        story.append(Paragraph(
+            f'<font color="{_COLORS["text"]}">{_sanitize_html(summary_text)}</font>',
+            S["body_small"],
+        ))
+        story.append(Spacer(1, 2 * mm))
+
+    # Total estimated risk
+    if total_estimated_risk:
+        story.append(Paragraph(
+            f'<font color="{_COLORS["critical"]}"><b>预估总风险：{_sanitize_html(total_estimated_risk)}</b></font>',
+            S["body_small"],
+        ))
+        story.append(Spacer(1, 2 * mm))
+
+    if not risks:
         story.append(Paragraph(
             f'<font color="{_COLORS["text_muted"]}">未检测到具体风险条款</font>',
             S["body_small"],
@@ -543,43 +576,82 @@ def _build_document_risk_section(story: list, doc: dict, S: dict) -> list:
         story.append(Spacer(1, 2 * mm))
         return story
 
-    for item in findings:
-        item_type = item.get("type", "风险条款")
-        item_desc = item.get("description", "")
-        item_sev = item.get("severity", "medium")
-        item_suggestion = item.get("suggestion", "")
+    # Category labels
+    category_labels = {
+        "billing_trap": "报价陷阱",
+        "contract_clause": "合同条款",
+        "extra_item": "增项风险",
+    }
+    category_colors = {
+        "billing_trap": _COLORS["critical"],
+        "contract_clause": _COLORS["high"],
+        "extra_item": _COLORS["medium"],
+    }
 
-        item_sev_color = _SEVERITY_COLORS.get(item_sev, (_COLORS["text"], _COLORS["bg_light"]))[0]
-        item_sev_bg = _SEVERITY_COLORS.get(item_sev, (_COLORS["text"], _COLORS["bg_light"]))[1]
-        item_sev_label = _severity_label(item_sev)
+    for item in risks:
+        item_category = item.get("category", "contract_clause")
+        item_title = item.get("title", "")
+        item_original_text = item.get("original_text", "")
+        item_critique = item.get("critique", "")
+        item_financial_consequence = item.get("financial_consequence", "")
+        item_suggested_fix = item.get("suggested_fix", "")
+
+        cat_label = category_labels.get(item_category, item_category)
+        cat_color = category_colors.get(item_category, _COLORS["text"])
 
         card_data = []
+
+        # Category + Title header
         card_data.append([
             Paragraph(
-                f'<font color="{item_sev_color}">● [{item_sev_label}]</font> '
-                f'<font color="{_COLORS["text"]}"><b>{_sanitize_html(item_type)}</b></font>',
+                f'<font color="{cat_color}"><b>[{_sanitize_html(cat_label)}]</b></font> '
+                f'<font color="{_COLORS["text"]}"><b>{_sanitize_html(item_title)}</b></font>',
                 S["body_small"],
             )
         ])
-        if item_desc:
+
+        # Original text quote
+        if item_original_text:
             card_data.append([
                 Paragraph(
-                    f'<font color="{_COLORS["text"]}">{_sanitize_html(item_desc)}</font>',
+                    f'<font color="{_COLORS["text_muted"]}">原文：</font>'
+                    f'<font color="{_COLORS["text"]}"><i>{_sanitize_html(item_original_text)}</i></font>',
                     S["body_small"],
                 )
             ])
-        if item_suggestion:
+
+        # Critique
+        if item_critique:
+            card_data.append([
+                Paragraph(
+                    f'<font color="{_COLORS["text_muted"]}"><b>风险分析：</b></font>'
+                    f'<font color="{_COLORS["text"]}">{_sanitize_html(item_critique)}</font>',
+                    S["body_small"],
+                )
+            ])
+
+        # Financial consequence
+        if item_financial_consequence:
+            card_data.append([
+                Paragraph(
+                    f'<font color="{_COLORS["critical"]}"><b>财务影响：{_sanitize_html(item_financial_consequence)}</b></font>',
+                    S["body_small"],
+                )
+            ])
+
+        # Suggested fix
+        if item_suggested_fix:
             card_data.append([
                 Paragraph(
                     f'<font color="{_COLORS["accent"]}"><b>✓ 建议：</b></font>'
-                    f'<font color="{_COLORS["text"]}">{_sanitize_html(item_suggestion)}</font>',
+                    f'<font color="{_COLORS["text"]}">{_sanitize_html(item_suggested_fix)}</font>',
                     S["body_small"],
                 )
             ])
 
         card = Table(card_data, colWidths=[165 * mm])
         card.setStyle(TableStyle([
-            ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor(item_sev_bg)),
+            ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor(_COLORS["bg_light"])),
             ("BOX", (0, 0), (-1, -1), 0.5, colors.HexColor(_COLORS["border"])),
             ("TOPPADDING", (0, 0), (-1, -1), 6),
             ("BOTTOMPADDING", (0, 0), (-1, -1), 6),

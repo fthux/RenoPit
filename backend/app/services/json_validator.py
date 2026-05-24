@@ -4,9 +4,12 @@ JSON Validator Service — LLM 返回结果的校验与修复
 """
 
 import json
+import logging
 from typing import Optional, Tuple, Dict, Any
 
 from json_repair import repair_json
+
+logger = logging.getLogger(__name__)
 
 
 def _clean_markdown_fences(text: str) -> str:
@@ -342,7 +345,16 @@ def validate_and_repair(llm_response_text: str) -> Tuple[Optional[dict], Optiona
         # 检查是否是关键字段缺失（problems 数组为空）
         problems = data.get("problems", [])
         if not problems or not isinstance(problems, list) or len(problems) == 0:
-            return None, f"JSON 校验失败 — 关键字段缺失: {', '.join(issues)}"
+            # problems 为空但 summary 存在，说明 AI 确实认为没有陷阱
+            if data.get("summary"):
+                logger.warning(
+                    "[JSONValidator] problems 为空但 summary 存在，视为无陷阱结果: %s",
+                    data.get("summary")[:100],
+                )
+                # 允许通过，填充空数组
+                data["problems"] = []
+            else:
+                return None, f"JSON 校验失败 — 关键字段缺失: {', '.join(issues)}"
 
         # 非关键字段缺失可降级填充后继续
         # 但仍记录 issue
@@ -350,9 +362,5 @@ def validate_and_repair(llm_response_text: str) -> Tuple[Optional[dict], Optiona
 
     # Step 3: 降级填充
     data = apply_fallback(data)
-
-    # 填充后再次确认 problems 不为空
-    if not data.get("problems"):
-        return None, "JSON 校验失败 — problems 数组为空"
 
     return data, None
