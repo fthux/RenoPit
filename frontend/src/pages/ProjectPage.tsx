@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useParams, Link, useNavigate } from 'react-router-dom'
-import { ArrowLeft, Upload, FileText, Image, Play, Loader2, CheckCircle2, Square, ChevronRight, AlertCircle, Pencil, Check, X, FileSearch, RefreshCw, Download, Eye } from 'lucide-react'
+import { ArrowLeft, Upload, FileText, Image, Play, Loader2, CheckCircle2, Square, ChevronRight, AlertCircle, Pencil, Check, X, FileSearch, RefreshCw, Download, Eye, Trash2 } from 'lucide-react'
 import type { Project, ProjectFile, ProjectImage } from '../types'
 import { useToast } from '../components/Toast'
 import ConfirmDialog from '../components/ConfirmDialog'
@@ -25,7 +25,7 @@ export default function ProjectPage() {
   const eventSourceRef = useRef<EventSource | null>(null)
 
   // Inline editing state
-  const [editingField, setEditingField] = useState<'name' | 'description' | null>(null)
+  const [editingField, setEditingField] = useState<'name' | 'description' | 'input_text' | null>(null)
   const [editValue, setEditValue] = useState('')
   const [saving, setSaving] = useState(false)
 
@@ -240,9 +240,37 @@ export default function ProjectPage() {
     }
   }
 
-  function startEditing(field: 'name' | 'description', currentValue: string) {
+  function startEditing(field: 'name' | 'description' | 'input_text', currentValue: string) {
     setEditingField(field)
     setEditValue(currentValue)
+  }
+
+  async function deleteFile(fileId: string) {
+    try {
+      const res = await fetch(`${API}/projects/${projectId}/files/${fileId}`, { method: 'DELETE' })
+      if (res.ok) {
+        showToast('success', '文件已删除')
+        await Promise.all([fetchFiles(), fetchProject().then(p => p && setProject(p))])
+      } else {
+        showToast('error', '删除失败')
+      }
+    } catch {
+      showToast('error', '删除失败，请重试')
+    }
+  }
+
+  async function deleteImage(imageId: string) {
+    try {
+      const res = await fetch(`${API}/projects/${projectId}/images/${imageId}`, { method: 'DELETE' })
+      if (res.ok) {
+        showToast('success', '图片已删除')
+        await Promise.all([fetchImages(), fetchProject().then(p => p && setProject(p))])
+      } else {
+        showToast('error', '删除失败')
+      }
+    } catch {
+      showToast('error', '删除失败，请重试')
+    }
   }
 
   function cancelEditing() {
@@ -271,7 +299,7 @@ export default function ProjectPage() {
       if (res.ok) {
         const updated = await res.json()
         setProject(updated)
-        showToast('success', editingField === 'name' ? '标题已更新' : '描述已更新')
+        showToast('success', editingField === 'name' ? '标题已更新' : editingField === 'description' ? '描述已更新' : '补充说明已更新')
         setEditingField(null)
         setEditValue('')
       } else {
@@ -351,7 +379,7 @@ export default function ProjectPage() {
 
         {/* Description */}
         {editingField === 'description' ? (
-          <div className="flex items-start gap-2 mt-2">
+          <div className="flex items-center gap-2 mt-2">
             <textarea
               value={editValue}
               onChange={(e) => setEditValue(e.target.value)}
@@ -456,20 +484,58 @@ export default function ProjectPage() {
         </div>
       )}
 
-      {/* Input Text Display */}
-      {project.input_text && project.input_text.trim() && (
-        <div className="mb-8 bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
-          <div className="px-6 py-4 border-b border-slate-100 bg-gradient-to-r from-slate-50 to-white">
-            <h2 className="text-sm font-semibold text-slate-700 flex items-center gap-2">
-              <FileText className="w-4 h-4 text-blue-500" />
-              补充说明
-            </h2>
-          </div>
-          <div className="p-5">
-            <p className="text-sm text-slate-600 whitespace-pre-wrap leading-relaxed">{project.input_text}</p>
-          </div>
+      {/* Input Text Section */}
+      <div className="mb-8 bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
+        <div className="px-6 py-4 border-b border-slate-100 bg-gradient-to-r from-slate-50 to-white flex items-center justify-between">
+          <h2 className="text-sm font-semibold text-slate-700 flex items-center gap-2">
+            <FileText className="w-4 h-4 text-blue-500" />
+            补充说明
+          </h2>
         </div>
-      )}
+        <div className="p-5">
+          {editingField === 'input_text' ? (
+            <div className="flex items-start gap-2">
+              <textarea
+                value={editValue}
+                onChange={(e) => setEditValue(e.target.value)}
+                onKeyDown={(e) => { if ((e.key === 'Enter' && e.metaKey) || (e.key === 'Enter' && e.ctrlKey)) saveEditing(); if (e.key === 'Escape') cancelEditing() }}
+                className="text-sm text-slate-600 bg-white border-2 border-blue-400 rounded-xl px-3 py-2 outline-none focus:border-blue-500 w-full resize-none"
+                rows={4}
+                autoFocus
+                disabled={saving}
+                maxLength={2000}
+                placeholder="补充说明（最多2000字）"
+              />
+              <div className="flex items-center gap-1">
+                <button onClick={saveEditing} disabled={saving} className="p-2 rounded-lg bg-blue-500 text-white hover:bg-blue-600 transition-colors disabled:opacity-50" title="保存">
+                  <Check className="w-4 h-4" />
+                </button>
+                <button onClick={cancelEditing} disabled={saving} className="p-2 rounded-lg bg-slate-100 text-slate-500 hover:bg-slate-200 transition-colors disabled:opacity-50" title="取消">
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+          ) : project.input_text && project.input_text.trim() ? (
+            <p
+              className="text-sm text-slate-600 whitespace-pre-wrap leading-relaxed group cursor-pointer hover:text-blue-500 transition-colors"
+              onClick={() => startEditing('input_text', project.input_text || '')}
+              title="点击编辑补充说明"
+            >
+              {project.input_text}
+              <Pencil className="w-3.5 h-3.5 inline-block ml-2 text-slate-300 opacity-0 group-hover:opacity-100 transition-opacity" />
+            </p>
+          ) : (
+            <p
+              className="text-sm text-slate-300 italic group flex items-center gap-1 cursor-pointer hover:text-blue-400 transition-colors"
+              onClick={() => startEditing('input_text', '')}
+              title="点击添加补充说明"
+            >
+              添加补充说明...
+              <Pencil className="w-3.5 h-3.5 text-slate-300 opacity-0 group-hover:opacity-100 transition-opacity" />
+            </p>
+          )}
+        </div>
+      </div>
 
       {/* File List */}
       <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
@@ -528,6 +594,13 @@ export default function ProjectPage() {
                   >
                     <Download className="w-4 h-4" />
                   </a>
+                  <button
+                    onClick={() => deleteFile(f.id)}
+                    className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+                    title="删除文件"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
                 </div>
               </div>
             ))}
@@ -556,6 +629,13 @@ export default function ProjectPage() {
                   >
                     <Download className="w-4 h-4" />
                   </a>
+                  <button
+                    onClick={() => deleteImage(img.id)}
+                    className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+                    title="删除图片"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
                 </div>
               </div>
             ))}

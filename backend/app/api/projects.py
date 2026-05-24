@@ -11,10 +11,13 @@ import uuid
 from datetime import datetime
 from typing import Optional, List
 
-from fastapi import APIRouter, Body, Depends, HTTPException, UploadFile, File, Form, Query
+import httpx
+from fastapi import APIRouter, Body, Depends, HTTPException, Request, UploadFile, File, Form, Query
+import math
 from fastapi.responses import FileResponse, StreamingResponse, Response
 from sqlalchemy.orm import Session
 
+from ..core.config import settings
 from ..core.database import get_db
 from ..models import Project, ProjectImage, ProjectFile, Analysis, Report
 from ..schemas import (
@@ -40,16 +43,32 @@ def _generate_access_token() -> str:
     return secrets.token_hex(32)
 
 
-# ── GET /api/projects — list all projects ──────────────────────────
+# ── GET /api/projects — list projects with pagination ─────────────
 @router.get("/", response_model=ProjectListResponse)
-async def list_projects(db: Session = Depends(get_db)):
+async def list_projects(
+    page: int = Query(1, ge=1, description="页码"),
+    page_size: int = Query(8, ge=1, le=100, description="每页数量"),
+    db: Session = Depends(get_db),
+):
+    total = db.query(Project).count()
+    total_pages = max(1, math.ceil(total / page_size))
+    offset = (page - 1) * page_size
+
     projects_orm = (
         db.query(Project)
         .order_by(Project.created_at.desc())
+        .offset(offset)
+        .limit(page_size)
         .all()
     )
     project_list = [_project_to_response(p) for p in projects_orm]
-    return ProjectListResponse(projects=project_list, total=len(project_list))
+    return ProjectListResponse(
+        projects=project_list,
+        total=total,
+        page=page,
+        page_size=page_size,
+        total_pages=total_pages,
+    )
 
 
 # ── POST /api/projects — create project (JSON body only) ────────────
@@ -225,6 +244,8 @@ async def update_project(
         project.name = body.name
     if body.description is not None:
         project.description = body.description
+    if body.input_text is not None:
+        project.input_text = body.input_text
 
     project.updated_at = datetime.utcnow()
     db.commit()
@@ -324,23 +345,31 @@ async def list_files(project_id: str, db: Session = Depends(get_db)):
 
 # ── GET /api/projects/:id/images — list project images ─────────────
 @router.get("/{project_id}/images")
-async def list_images(project_id: str, db: Session = Depends(get_db)):
+async def list_images(
+    project_id: str,
+    db: Session = Depends(get_db),
+    include_storage_path: bool = Query(False, description="是否包含 storage_path 字段（供 PDF 生成等内部使用）"),
+):
     project = db.query(Project).filter(Project.id == project_id).first()
     if not project:
         raise HTTPException(status_code=404, detail="项目不存在")
     images = db.query(ProjectImage).filter(ProjectImage.project_id == project_id).all()
-    return [
-        {
+    result = []
+    for img in images:
+        item = {
             "id": img.id,
             "project_id": img.project_id,
             "original_name": img.original_filename,
+            "original_filename": img.original_filename,
             "file_size": img.file_size,
             "width": img.width,
             "height": img.height,
             "created_at": img.created_at.isoformat() if img.created_at else None,
         }
-        for img in images
-    ]
+        if include_storage_path:
+            item["storage_path"] = img.storage_path
+        result.append(item)
+    return result
 
 
 # ── GET /api/projects/:id/analysis — get analysis JSON ─────────────
@@ -781,45 +810,33 @@ async def get_report_info(project_id: str, db: Session = Depends(get_db)):
 
 # ── GET /api/projects/:id/report/pdf — download PDF ────────────────
 @router.get("/{project_id}/report/pdf")
-async def download_report_pdf(project_id: str, db: Session = Depends(get_db)):
+async def download_report_pdf(project_id: str, request: Request, db: Session = Depends(get_db)):
     """生成并下载 PDF 报告。
 
-    使用 _build_result_data() 共享逻辑处理数据（与 /result 端点一致），
-    再传递给 generate_pdf() 生成 PDF。
+    通过调用 /api/projects/{id}/result 和 /api/projects/{id}/images 接口获取数据，
+    保证 PDF 使用的数据处理逻辑与前端完全一致。
     """
-    project = db.query(Project).filter(Project.id == project_id).first()
-    if not project:
-        raise HTTPException(status_code=404, detail="项目不存在")
+    # 使用 internal URL 进行自引用 API 调用（在 Docker 容器内 localhost:3000 不可达）
+    internal_base_url = "http://localhost:8000"
 
-    # 获取分析数据（使用与 /result 端点相同的处理逻辑）
-    analysis = (
-        db.query(Analysis)
-        .filter(Analysis.project_id == project_id, Analysis.status == "completed")
-        .order_by(Analysis.completed_at.desc())
-        .first()
-    )
-    if not analysis or not analysis.raw_result_json:
-        raise HTTPException(status_code=503, detail="请先完成分析")
+    # 调用 /api/projects/{id}/result 获取分析数据（与前端共享处理逻辑）
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        result_resp = await client.get(f"{internal_base_url}/api/projects/{project_id}/result")
+        if result_resp.status_code == 404:
+            raise HTTPException(status_code=404, detail="项目不存在")
+        if result_resp.status_code != 200:
+            raise HTTPException(status_code=503, detail="请先完成分析")
+        result_data = result_resp.json()
 
-    result_data = _build_result_data(analysis)
-
-    # 获取图片数据
-    images = (
-        db.query(ProjectImage)
-        .filter(ProjectImage.project_id == project_id)
-        .all()
-    )
-    images_data = [
-        {
-            "id": img.id,
-            "original_name": img.original_filename,
-            "original_filename": img.original_filename,
-            "storage_path": img.storage_path,
-            "width": img.width,
-            "height": img.height,
-        }
-        for img in images
-    ]
+    # 调用 /api/projects/{id}/images 获取图片数据（包含 storage_path）
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        images_resp = await client.get(
+            f"{internal_base_url}/api/projects/{project_id}/images",
+            params={"include_storage_path": "true"},
+        )
+        if images_resp.status_code != 200:
+            raise HTTPException(status_code=503, detail="获取图片数据失败")
+        images_data = images_resp.json()
 
     # 生成 PDF
     try:
@@ -833,8 +850,14 @@ async def download_report_pdf(project_id: str, db: Session = Depends(get_db)):
 
     # 保存 Report 记录
     try:
+        analysis = (
+            db.query(Analysis)
+            .filter(Analysis.project_id == project_id, Analysis.status == "completed")
+            .order_by(Analysis.completed_at.desc())
+            .first()
+        )
         report_record = db.query(Report).filter(Report.project_id == project_id).first()
-        if not report_record:
+        if not report_record and analysis:
             report_record = Report(
                 project_id=project_id,
                 analysis_id=analysis.id,
@@ -897,6 +920,42 @@ async def get_file_download(project_id: str, file_id: str, db: Session = Depends
         media_type=media_map.get(file_record.file_type, "application/octet-stream"),
         filename=file_record.original_filename,
     )
+
+
+# ── DELETE /api/projects/:id/files/:file_id — delete file ───────
+@router.delete("/{project_id}/files/{file_id}")
+async def delete_file(project_id: str, file_id: str, db: Session = Depends(get_db)):
+    file_record = (
+        db.query(ProjectFile)
+        .filter(ProjectFile.id == file_id, ProjectFile.project_id == project_id)
+        .first()
+    )
+    if not file_record:
+        raise HTTPException(status_code=404, detail="文件不存在")
+    # 删除物理文件
+    if os.path.exists(file_record.storage_path):
+        os.remove(file_record.storage_path)
+    db.delete(file_record)
+    db.commit()
+    return {"detail": "ok"}
+
+
+# ── DELETE /api/projects/:id/images/:image_id — delete image ─────
+@router.delete("/{project_id}/images/{image_id}")
+async def delete_image(project_id: str, image_id: str, db: Session = Depends(get_db)):
+    image = (
+        db.query(ProjectImage)
+        .filter(ProjectImage.id == image_id, ProjectImage.project_id == project_id)
+        .first()
+    )
+    if not image:
+        raise HTTPException(status_code=404, detail="图片不存在")
+    # 删除物理文件
+    if os.path.exists(image.storage_path):
+        os.remove(image.storage_path)
+    db.delete(image)
+    db.commit()
+    return {"detail": "ok"}
 
 
 # ── helper ──────────────────────────────────────────────────────────

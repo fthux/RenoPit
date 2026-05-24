@@ -50,9 +50,13 @@ class ProjectUpdateRequest(BaseModel):
     """更新项目请求体"""
     name: Optional[str] = Field(default=None, max_length=255, description="项目名称")
     description: Optional[str] = Field(default=None, max_length=500, description="项目描述")
+    input_text: Optional[str] = Field(default=None, max_length=2000, description="补充文本说明")
 
 
 class ProjectListResponse(BaseModel):
-    """项目列表响应"""
+    """项目列表响应（带分页）"""
     projects: List[ProjectResponse]
     total: int
+    page: int = 1
+    page_size: int = 8
+    total_pages: int = 1

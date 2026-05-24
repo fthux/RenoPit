@@ -1,50 +1,90 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Plus, FolderOpen, Loader2, Trash2, Copy, Clock, CheckCircle2, AlertCircle, FileText, Image, FileWarning } from 'lucide-react'
+import { Plus, FolderOpen, Loader2, Trash2, Copy, Clock, CheckCircle2, AlertCircle, FileText, Image, FileWarning, ChevronLeft, ChevronRight, Ellipsis } from 'lucide-react'
 import type { Project } from '../types'
 import ConfirmDialog from '../components/ConfirmDialog'
 
 const API = '/api'
+const PAGE_SIZE = 8
 
 export default function ProjectsPage() {
   const [projects, setProjects] = useState<Project[]>([])
   const [loading, setLoading] = useState(true)
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null)
+  const [page, setPage] = useState(1)
+  const [total, setTotal] = useState(0)
+  const [totalPages, setTotalPages] = useState(1)
   const navigate = useNavigate()
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
-  const fetchProjects = useCallback(async () => {
+  const fetchProjects = useCallback(async (p: number) => {
     try {
-      const res = await fetch(`${API}/projects`)
+      const res = await fetch(`${API}/projects?page=${p}&page_size=${PAGE_SIZE}`)
       if (res.ok) {
         const data = await res.json()
-        setProjects(Array.isArray(data) ? data : data.projects || [])
+        setProjects(data.projects || [])
+        setTotal(data.total || 0)
+        setTotalPages(data.total_pages || 1)
       }
     } catch (err) { console.error(err) }
   }, [])
 
   useEffect(() => {
     const cancelled = { current: false }
-    fetchProjects().finally(() => {
+    fetchProjects(page).finally(() => {
       if (!cancelled.current) setLoading(false)
     })
     return () => { cancelled.current = true }
-  }, [])
+  }, [page])
 
   // Poll for status updates for analyzing projects
   useEffect(() => {
     const hasAnalyzing = projects.some((p) => p.status === 'analyzing')
     if (!hasAnalyzing) return
-    pollRef.current = setInterval(fetchProjects, 3000)
+    pollRef.current = setInterval(() => fetchProjects(page), 3000)
     return () => { if (pollRef.current) clearInterval(pollRef.current) }
-  }, [projects, fetchProjects])
+  }, [projects, fetchProjects, page])
+
+  function goToPage(p: number) {
+    if (p < 1 || p > totalPages || p === page) return
+    setPage(p)
+    setLoading(true)
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+
+  /** 生成带截断符的页码数组：首尾 + 当前页前后各1页，其余用 "..." 表示 */
+  function getPageNumbers(): (number | string)[] {
+    if (totalPages <= 7) {
+      return Array.from({ length: totalPages }, (_, i) => i + 1)
+    }
+
+    const pages: (number | string)[] = [1]
+
+    if (page > 3) {
+      pages.push('...')
+    }
+
+    // 当前页前后各1页
+    const start = Math.max(2, page - 1)
+    const end = Math.min(totalPages - 1, page + 1)
+    for (let i = start; i <= end; i++) {
+      pages.push(i)
+    }
+
+    if (page < totalPages - 2) {
+      pages.push('...')
+    }
+
+    pages.push(totalPages)
+
+    return pages
+  }
 
   async function duplicateProject(id: string) {
     try {
       const res = await fetch(`${API}/projects/${id}/duplicate`, { method: 'POST' })
       if (res.ok) {
-        const newProject = await res.json()
-        setProjects((prev) => [newProject, ...prev])
+        await fetchProjects(page)
       }
     } catch (err) { console.error(err) }
   }
@@ -52,8 +92,9 @@ export default function ProjectsPage() {
   async function deleteProject(id: string) {
     try {
       await fetch(`${API}/projects/${id}`, { method: 'DELETE' })
-      setProjects((prev) => prev.filter((p) => p.id !== id))
       setDeleteConfirm(null)
+      // 删除后重新请求 API 获取当前页数据，保证分页一致性
+      await fetchProjects(page)
     } catch (err) { console.error(err) }
   }
 
@@ -131,7 +172,7 @@ export default function ProjectsPage() {
             {/* Stats Row */}
             <div className="flex items-center justify-between mb-6">
               <span className="text-sm text-slate-400">
-                共 {projects.length} 个项目
+                共 {total} 个项目 · 第 {page}/{totalPages} 页
               </span>
               <button
                 onClick={() => navigate('/projects/new')}
@@ -241,6 +282,51 @@ export default function ProjectsPage() {
                 )
               })}
             </div>
+
+            {/* Pagination Controls */}
+            {totalPages > 1 && (
+              <div className="flex items-center justify-center gap-2 mt-10">
+                <button
+                  onClick={() => goToPage(page - 1)}
+                  disabled={page <= 1}
+                  className="flex items-center gap-1 px-4 py-2 rounded-xl border border-slate-200 text-sm font-medium text-slate-600 hover:border-blue-300 hover:text-blue-600 hover:bg-blue-50/30 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                  上一页
+                </button>
+
+                {getPageNumbers().map((p, idx) =>
+                  p === '...' ? (
+                    <span
+                      key={`ellipsis-${idx}`}
+                      className="w-10 h-10 flex items-center justify-center text-slate-400 text-sm select-none"
+                    >
+                      <Ellipsis className="w-4 h-4" />
+                    </span>
+                  ) : (
+                    <button
+                      key={p}
+                      onClick={() => goToPage(p as number)}
+                      className={`w-10 h-10 rounded-xl text-sm font-medium transition-all ${p === page
+                        ? 'bg-blue-600 text-white shadow-lg shadow-blue-200'
+                        : 'border border-slate-200 text-slate-600 hover:border-blue-300 hover:text-blue-600 hover:bg-blue-50/30'
+                        }`}
+                    >
+                      {p}
+                    </button>
+                  )
+                )}
+
+                <button
+                  onClick={() => goToPage(page + 1)}
+                  disabled={page >= totalPages}
+                  className="flex items-center gap-1 px-4 py-2 rounded-xl border border-slate-200 text-sm font-medium text-slate-600 hover:border-blue-300 hover:text-blue-600 hover:bg-blue-50/30 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+                >
+                  下一页
+                  <ChevronRight className="w-4 h-4" />
+                </button>
+              </div>
+            )}
           </div>
         )}
       </div>

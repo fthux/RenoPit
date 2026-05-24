@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Upload, Loader2, Trash2, FileText, Image as ImageIcon, ArrowRight } from 'lucide-react'
+import { Upload, Loader2, Trash2, FileText, Image as ImageIcon } from 'lucide-react'
 
 const API = '/api'
 
@@ -29,8 +29,7 @@ export default function CreateProjectPage() {
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
   }
 
-  const hasContent = selectedFiles.length > 0 || inputText.trim().length > 0
-  const canCreate = name.trim().length > 0 && hasContent && !creating
+  const canCreate = name.trim().length > 0 && !creating
 
   async function createProject() {
     if (!canCreate) return
@@ -97,7 +96,7 @@ export default function CreateProjectPage() {
               />
             </div>
             <div>
-              <label className="block text-sm font-semibold text-slate-700 mb-1.5">描述（可选）</label>
+              <label className="block text-sm font-semibold text-slate-700 mb-1.5">项目描述</label>
               <input
                 className="w-full px-5 py-3.5 border border-slate-200 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 bg-slate-50/30 transition-all"
                 placeholder="项目描述"
@@ -156,7 +155,7 @@ export default function CreateProjectPage() {
           {/* Input Text */}
           <div>
             <label className="block text-sm font-semibold text-slate-700 mb-1.5">
-              补充说明（可选）
+              补充说明
               <span className="text-slate-400 font-normal ml-1">直接输入你的装修需求或注意事项</span>
             </label>
             <textarea
@@ -167,12 +166,6 @@ export default function CreateProjectPage() {
               onChange={(e) => setInputText(e.target.value)}
               maxLength={2000}
             />
-            <div className="flex justify-between items-center mt-2">
-              <span className="text-xs text-slate-400">{inputText.length} / 2000</span>
-              {!hasContent && name.trim() && (
-                <span className="text-xs text-amber-600">提示：建议上传文件或输入文本描述以获得更准确的分析</span>
-              )}
-            </div>
           </div>
 
           {/* Actions */}
@@ -183,8 +176,7 @@ export default function CreateProjectPage() {
               className="px-8 py-3.5 bg-gradient-to-r from-blue-600 to-blue-500 text-white rounded-2xl text-base font-semibold hover:from-blue-700 hover:to-blue-600 disabled:opacity-40 flex items-center gap-2 transition-all shadow-xl shadow-blue-500/20 hover:shadow-blue-500/30 hover:scale-[1.02] active:scale-[0.98]"
             >
               {creating && <Loader2 className="w-5 h-5 animate-spin" />}
-              {creating ? '创建中...' : '开始分析'}
-              {!creating && <ArrowRight className="w-5 h-5" />}
+              {creating ? '创建中...' : '创建'}
             </button>
             <button
               onClick={() => navigate('/projects')}
