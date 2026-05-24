@@ -7,6 +7,11 @@ Key fixes:
 2. Properly embeds uploaded images into the PDF
 3. Draws bounding box annotations on images for better visual feedback
 4. Properly sanitizes HTML entities to avoid ReportLab XML parsing errors
+
+Data flow:
+- The `generate_pdf()` function accepts pre-computed `result_data` and `images_data`
+  from the API layer, ensuring data processing logic is consistent with the
+  `/api/projects/{project_id}/result` endpoint.
 """
 
 import io
@@ -39,7 +44,7 @@ logger = logging.getLogger(__name__)
 
 # ── Font Path (bundled extracted TTF) ──────────────────────────────
 # __file__ = backend/app/services/pdf_generator.py
-# dirname ×3 → backend/
+# dirname x3 -> backend/
 _BACKEND_DIR = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
 _FONT_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "fonts")
 _FONT_PATH = os.path.join(_FONT_DIR, "STHeitiLight-extracted.ttf")
@@ -135,60 +140,94 @@ def _build_content(project_id: str, analysis_data: dict, images_data: list) -> l
     story = []
 
     # ── Cover Page ─────────────────────────────────────────────
-    story.append(Spacer(1, 60 * mm))
+    story.append(Spacer(1, 10 * mm))
     story.append(Paragraph("装修避坑分析报告", S["title"]))
     story.append(Paragraph("Renovation Pitfall Analysis Report", S["subtitle"]))
     story.append(Spacer(1, 12 * mm))
-    story.append(Paragraph(f"项目编号：{project_id[:8]}...", S["body"]))
-    story.append(Paragraph(f"分析日期：{analysis_data.get('completed_at', 'N/A')[:10]}", S["body"]))
+    story.append(Paragraph("基本信息", S["h1"]))
+    story.append(Paragraph(f"所属项目编号：{project_id}", S["body"]))
+    story.append(Paragraph(f"分析报告编号：{analysis_data.get('id', 'N/A')}", S["body"]))
+    story.append(Paragraph(f"分析开始日期：{analysis_data.get('created_at', 'N/A')[:19]}", S["body"]))
+    story.append(Paragraph(f"分析完成日期：{analysis_data.get('completed_at', 'N/A')[:19]}", S["body"]))
     story.append(Spacer(1, 6 * mm))
 
+    story.append(Paragraph("综合评分", S["h1"]))
     summary = analysis_data.get("summary", {})
-    score = summary.get("score", 0)
+    score = int(summary.get("score", 0))
     story.append(_build_score_card(score))
-    story.append(Spacer(1, 8 * mm))
+    story.append(Spacer(1, 16 * mm))
 
     # Summary text
     summary_text = summary.get("summary_text", "")
     if summary_text:
-        story.append(Paragraph("总体评估", S["h2"]))
+        story.append(Paragraph("总体评估", S["h1"]))
         story.append(Paragraph(_sanitize_html(summary_text), S["body"]))
         story.append(Spacer(1, 4 * mm))
 
-    # Pitfall counts
-    counts_data = [
-        ["严重", str(summary.get("critical_count", 0)), _COLORS["critical"]],
-        ["高", str(summary.get("high_count", 0)), _COLORS["high"]],
-        ["中", str(summary.get("medium_count", 0)), _COLORS["medium"]],
-        ["低", str(summary.get("low_count", 0)), _COLORS["low"]],
-    ]
-    cf = S["cell_severity"]
-    header_style = ParagraphStyle("ch", parent=cf, textColor=colors.white, fontSize=9)
-    ts = TableStyle([
-        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor(_COLORS["primary"])),
-        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-        ("ALIGN", (0, 0), (-1, -1), "CENTER"),
-        ("FONTNAME", (0, 0), (-1, -1), S["use_font"]),
-        ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor(_COLORS["border"])),
-        ("BACKGROUND", (2, 1), (2, 1), colors.HexColor(_COLORS["critical"])),
-        ("BACKGROUND", (2, 2), (2, 2), colors.HexColor(_COLORS["high"])),
-        ("BACKGROUND", (2, 3), (2, 3), colors.HexColor(_COLORS["medium"])),
-        ("BACKGROUND", (2, 4), (2, 4), colors.HexColor(_COLORS["low"])),
-    ])
-    # Build header + data
-    table_data = [
-        [Paragraph("严重等级", header_style), Paragraph("数量", header_style), Paragraph("", header_style)],
-    ]
-    for label, count, color in counts_data:
-        table_data.append([
-            Paragraph(label, cf),
-            Paragraph(count, cf),
-            Paragraph("", ParagraphStyle("dot", parent=cf, textColor=colors.HexColor(color), fontSize=14)),
-        ])
-    counts_table = Table(table_data, colWidths=[100, 80, 60])
-    counts_table.setStyle(ts)
-    story.append(Paragraph("问题统计", S["h2"]))
-    story.append(counts_table)
+    # ── Compact severity row ───────────────────────────────────
+    sev_order = ["critical", "high", "medium", "low"]
+    sev_labels_map = {"critical": "严重", "high": "高", "medium": "中", "low": "低"}
+    sev_colors_map = {"critical": _COLORS["critical"], "high": _COLORS["high"], "medium": _COLORS["medium"], "low": _COLORS["low"]}
+    sev_count = {s: summary.get(f"{s}_count", 0) for s in sev_order}
+    total = sum(sev_count.values())
+
+    # Severity count labels (single instance, summary_text already covers the topic)
+    header_parts = []
+    for s in sev_order:
+        c = sev_count.get(s, 0)
+        header_parts.append(
+            f'<font color="{sev_colors_map[s]}"><b>{sev_labels_map[s]}: {c}</b></font>'
+        )
+    if header_parts:
+        story.append(Paragraph(
+            " | ".join(header_parts),
+            ParagraphStyle("SevRow", parent=S["body"], spaceAfter=6),
+        ))
+
+    # Distribution bar as a single table row with colored columns
+    if total > 0:
+        bar_cells = []
+        bar_widths = []
+        for s in sev_order:
+            c = sev_count.get(s, 0)
+            w = max(c / total * 200, 3 if c > 0 else 0)  # scale to 200pt
+            bar_widths.append(w * mm if w > 0 else 0)
+            if w > 0:
+                bar_cells.append("")
+        if bar_cells:
+            from reportlab.platypus import Table
+            if bar_cells:
+                bar_data = [bar_cells]
+                # Actually build a proper bar: one row with colored bg
+                table_data = []
+                table_widths = []
+                for s in sev_order:
+                    c = sev_count.get(s, 0)
+                    if c > 0:
+                        w = max(c / total * 170, 3)  # scale to 170mm
+                        table_widths.append(w * mm)
+                        table_data.append("")
+                if table_data:
+                    # Use a simple 1xN table for the bar
+                    table_data = [["" for _ in table_widths]]
+                    bar = Table(table_data, colWidths=table_widths, rowHeights=[8])
+                    bar_styles = []
+                    idx = 0
+                    for s in sev_order:
+                        c = sev_count.get(s, 0)
+                        if c > 0:
+                            bar_styles.append(("BACKGROUND", (idx, 0), (idx, 0), colors.HexColor(sev_colors_map[s])))
+                            idx += 1
+                    bar_styles.extend([
+                        ("LEFTPADDING", (0, 0), (-1, -1), 0),
+                        ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+                        ("TOPPADDING", (0, 0), (-1, -1), 0),
+                        ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
+                    ])
+                    bar.setStyle(TableStyle(bar_styles))
+                    story.append(Spacer(1, 2 * mm))
+                    story.append(bar)
+                    story.append(Spacer(1, 4 * mm))
 
     story.append(PageBreak())
 
@@ -234,8 +273,10 @@ def _build_content(project_id: str, analysis_data: dict, images_data: list) -> l
 
 
 def _build_score_card(score: int):
-    """Build a score visualization."""
-    S = _styles()
+    """Build a score visualization — flat table, no nested tables to avoid artifacts."""
+    _ensure_font_registered()
+    use_font = _CN_FONT if _CN_FONT in pdfmetrics._fonts else "Helvetica"
+
     color = _COLORS["accent"]
     if score < 60:
         color = _COLORS["high"]
@@ -245,55 +286,39 @@ def _build_score_card(score: int):
     score_text = Paragraph(
         f'<font size="48" color="{color}"><b>{score}</b></font>'
         f'<font size="14" color="{_COLORS["text_muted"]}"> / 100</font>',
-        ParagraphStyle("ScoreLine", alignment=TA_CENTER, spaceAfter=4),
+        ParagraphStyle("ScoreLine", fontName=use_font, alignment=TA_CENTER, spaceAfter=8),
     )
     label_text = Paragraph(
-        f'<font size="12" color="{color}"><b>'
+        f'<font size="13" color="{color}"><b>'
         f'{"优秀" if score >= 80 else "待改进" if score >= 60 else "需重视"}'
         f'</b></font>',
-        ParagraphStyle("ScoreLabel", alignment=TA_CENTER, spaceAfter=6),
+        ParagraphStyle("ScoreLabel", fontName=use_font, alignment=TA_CENTER, spaceAfter=4),
     )
-    # Progress bar background
-    bar_bg = Table(
-        [[""]],
-        colWidths=[160],
+
+    # Single flat progress bar: fill on left, remaining on right
+    fill_w = max(int(score * 1.6), 3)  # max 160 for score 100
+    remain_w = max(160 - fill_w, 0)
+    bar = Table(
+        [["", ""]],
+        colWidths=[fill_w, remain_w],
         rowHeights=[10],
     )
-    bar_bg.setStyle(TableStyle([
-        ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#E2E8F0")),
-        ("LINEBELOW", (0, 0), (-1, 0), 0, colors.white),
-    ]))
-    bar_fill = Table(
-        [[""]],
-        colWidths=[max(score * 1.6, 3)],
-        rowHeights=[10],
-    )
-    bar_fill.setStyle(TableStyle([
-        ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor(color)),
-        ("LINEBELOW", (0, 0), (-1, 0), 0, colors.white),
-    ]))
-    bar = Table([[bar_fill]], colWidths=[160], rowHeights=[10])
     bar.setStyle(TableStyle([
-        ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#E2E8F0")),
+        ("BACKGROUND", (0, 0), (0, 0), colors.HexColor(color)),
+        ("BACKGROUND", (1, 0), (1, 0), colors.HexColor("#E2E8F0")),
         ("LEFTPADDING", (0, 0), (-1, -1), 0),
         ("RIGHTPADDING", (0, 0), (-1, -1), 0),
         ("TOPPADDING", (0, 0), (-1, -1), 0),
         ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
     ]))
 
-    # Wrap in a table for centering
+    # Wrap in a table for centering (no LINEBELOW styles)
     card = Table(
-        [[score_text], [label_text], [bar]],
-        colWidths=[180],
+        [[score_text], [Spacer(1, 12 * mm)], [label_text], [Spacer(1, 6 * mm)], [bar]],
+        colWidths=[200],
     )
     card.setStyle(TableStyle([
         ("ALIGN", (0, 0), (-1, -1), "CENTER"),
-        ("BOX", (0, 0), (-1, -1), 1, colors.HexColor(_COLORS["border"])),
-        ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor(_COLORS["bg_light"])),
-        ("TOPPADDING", (0, 0), (-1, -1), 16),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 16),
-        ("LEFTPADDING", (0, 0), (-1, -1), 20),
-        ("RIGHTPADDING", (0, 0), (-1, -1), 20),
     ]))
     return card
 
@@ -305,13 +330,11 @@ def _build_image_section(img_info: dict, analysis_data: dict, idx: int):
 
     # Title
     original_name = img_info.get("original_name", img_info.get("original_filename", f"图片{idx+1}"))
-    elements.append(Paragraph(f"📷 {_sanitize_html(original_name)}", S["h2"]))
+    elements.append(Paragraph(f"📷 {_sanitize_html(original_name)}", S["h1"]))
     elements.append(Spacer(1, 2 * mm))
 
     # Check if image file exists
     storage_path = img_info.get("storage_path", "")
-    # Resolve relative path to absolute (storage_path may be relative like "uploads/...")
-    # __file__ = backend/app/services/pdf_generator.py → dirname×3 = backend/
     if storage_path and not os.path.isabs(storage_path):
         storage_path = os.path.abspath(storage_path)
     if not storage_path or not os.path.exists(storage_path):
@@ -351,13 +374,10 @@ def _build_image_section(img_info: dict, analysis_data: dict, idx: int):
         return KeepTogether(elements)
 
     # Try to find bbox annotations for this image
-    # The bbox data is in analysis pitfalls "bbox" field, matching by image file name
-    bbox_found = False
     pitfalls = analysis_data.get("pitfalls", [])
     problems_raw = analysis_data.get("result_json", {}).get("problems", [])
     all_items = pitfalls + problems_raw
 
-    # Check if this image has related bbox annotations
     img_filename_lower = original_name.lower()
     related_bboxes = []
     for item in all_items:
@@ -365,13 +385,10 @@ def _build_image_section(img_info: dict, analysis_data: dict, idx: int):
             continue
         bbox = item.get("bbox")
         if bbox and isinstance(bbox, list) and len(bbox) == 4:
-            # Check if this bbox relates to this image by matching location text or image name
             location = (item.get("location") or "").lower()
             if img_filename_lower.split(".")[0] in location or location in img_filename_lower:
                 try:
                     bbox_f = [float(x) for x in bbox]
-                    # Normalize bbox: [x, y, w, h] where x,y is top-left
-                    # Convert to display coordinates
                     scale_x = display_w / img_w
                     scale_y = display_h / img_h
                     bbox_display = [
@@ -384,10 +401,9 @@ def _build_image_section(img_info: dict, analysis_data: dict, idx: int):
                 except (ValueError, TypeError, IndexError):
                     pass
 
-    if related_bboxes:
-        bbox_found = True
-        # We can't easily draw bbox on Image flowable in reportlab without canvas operations.
-        # Instead, we list the related issues below the image.
+    if not related_bboxes:
+        elements.append(Paragraph("（该图片未检测到具体问题位置）", S["caption"]))
+    else:
         for item in all_items:
             if item.get("bbox") and isinstance(item.get("bbox"), list):
                 location = (item.get("location") or "").lower()
@@ -401,9 +417,6 @@ def _build_image_section(img_info: dict, analysis_data: dict, idx: int):
                             f'<font color="{_COLORS["text"]}"><b>[{_severity_label(sev)}]</b> {_sanitize_html(desc)}</font>',
                             S["body_small"],
                         ))
-
-    if not bbox_found:
-        elements.append(Paragraph("（该图片未检测到具体问题位置）", S["caption"]))
 
     return KeepTogether(elements)
 
@@ -484,18 +497,13 @@ def _build_pitfall_card(item: dict, S: dict):
 
 
 def _sanitize_html(text: str) -> str:
-    """Escape HTML special characters to prevent ReportLab XML parsing errors.
-    
-    The order matters: '&' must be escaped first to avoid double-escaping
-    other entities that may already be present in the text.
-    """
+    """Escape HTML special characters to prevent ReportLab XML parsing errors."""
     if not isinstance(text, str):
         text = str(text)
-    # Escape & first, then the rest
     text = text.replace("&", "&")
     text = text.replace("<", "<")
     text = text.replace(">", ">")
-    text = text.replace('"', "&quot;")
+    text = text.replace('"', '"')
     text = text.replace("'", "&#39;")
     return text
 
@@ -535,111 +543,34 @@ def _content_tmpl(canvas, doc):
 
 
 # ── Main Generator ─────────────────────────────────────────────────
-def generate_pdf(project_id: str) -> Optional[bytes]:
+def generate_pdf(project_id: str, result_data: dict, images_data: list) -> Optional[bytes]:
     """Generate a PDF report for the given project.
-    Returns PDF bytes, or None if generation fails.
-    """
-    # Lazy imports to avoid circular dependencies
-    from sqlalchemy.orm import Session
-    from ..core.database import SessionLocal
-    from ..models import Project, Analysis, ProjectImage, Report
 
-    db: Optional[Session] = None
+    Accepts pre-computed `result_data` (from the /api/projects/{id}/result endpoint)
+    and `images_data` (from DB query), so data processing logic is consistent
+    between the web frontend and the PDF.
+
+    Args:
+        project_id: The project UUID.
+        result_data: The analysis result dict as returned by `_build_result_data()`.
+        images_data: List of image info dicts with keys:
+            id, original_name, original_filename, storage_path, width, height.
+
+    Returns:
+        PDF bytes, or None if generation fails.
+    """
     try:
         _ensure_font_registered()
-        db = SessionLocal()
 
-        # Fetch project
-        project = db.query(Project).filter(Project.id == project_id).first()
-        if not project:
-            logger.error(f"Project {project_id} not found")
-            return None
-
-        # Fetch analysis
-        analysis = (
-            db.query(Analysis)
-            .filter(Analysis.project_id == project_id, Analysis.status == "completed")
-            .order_by(Analysis.completed_at.desc())
-            .first()
-        )
-        if not analysis or not analysis.raw_result_json:
-            logger.error(f"No completed analysis for project {project_id}")
-            return None
-
-        # Fetch images
-        images = (
-            db.query(ProjectImage)
-            .filter(ProjectImage.project_id == project_id)
-            .all()
-        )
-
-        # Prepare data structures
+        # Build analysis_data dict in the format _build_content() expects
         analysis_data = {
-            "completed_at": str(analysis.completed_at or ""),
-            "summary": {},
-            "pitfalls": [],
-            "result_json": analysis.raw_result_json,
+            "id": str(result_data.get("id", "")),
+            "created_at": str(result_data.get("created_at", "")),
+            "completed_at": str(result_data.get("completed_at", "")),
+            "summary": result_data.get("summary", {}),
+            "pitfalls": result_data.get("pitfalls", []),
+            "result_json": {},
         }
-
-        raw = analysis.raw_result_json
-        raw_summary = raw.get("summary", {})
-        problems = raw.get("problems", [])
-
-        # Build summary from raw data
-        sev_count = {"critical": 0, "high": 0, "medium": 0, "low": 0}
-        pitfalls_list = []
-        for p in problems:
-            if not isinstance(p, dict):
-                continue
-            sev = p.get("severity", "medium") or "medium"
-            if sev not in sev_count:
-                sev = "medium"
-            sev_count[sev] = sev_count.get(sev, 0) + 1
-            pitfalls_list.append({
-                "id": str(len(pitfalls_list) + 1),
-                "category": p.get("category", "其他"),
-                "description": p.get("title") or p.get("critique", ""),
-                "severity": sev,
-                "location": p.get("location", ""),
-                "suggestion": p.get("alternative", ""),
-                "critique": p.get("critique", ""),
-                "trap_explanation": p.get("trap_explanation", ""),
-                "bbox": p.get("bbox"),
-            })
-
-        score = 95
-        if problems:
-            score = max(0, min(100, 100 - sum(
-                sev_count[s] * w for s, w in [("critical", 15), ("high", 8), ("medium", 3), ("low", 1)]
-            )))
-
-        if isinstance(raw_summary, dict):
-            summary_text = raw_summary.get("overall_assessment", "")
-        else:
-            summary_text = str(raw_summary) if raw_summary else ""
-
-        analysis_data["summary"] = {
-            "total_pitfalls": len(problems),
-            "critical_count": sev_count["critical"],
-            "high_count": sev_count["high"],
-            "medium_count": sev_count["medium"],
-            "low_count": sev_count["low"],
-            "score": score,
-            "summary_text": summary_text,
-        }
-        analysis_data["pitfalls"] = pitfalls_list
-
-        # Build images data
-        images_data = []
-        for img in images:
-            images_data.append({
-                "id": img.id,
-                "original_name": img.original_filename,
-                "original_filename": img.original_filename,
-                "storage_path": img.storage_path,
-                "width": img.width,
-                "height": img.height,
-            })
 
         # Build PDF
         buf = io.BytesIO()
@@ -664,27 +595,9 @@ def generate_pdf(project_id: str) -> Optional[bytes]:
         pdf_bytes = buf.getvalue()
         buf.close()
 
-        # Save report record (non-critical: PDF generation already succeeded)
-        try:
-            report_record = db.query(Report).filter(Report.project_id == project_id).first()
-            if not report_record:
-                report_record = Report(
-                    project_id=project_id,
-                    analysis_id=analysis.id,
-                    file_path=f"generated/{project_id[:8]}.pdf",
-                )
-                db.add(report_record)
-                db.commit()
-        except Exception as report_err:
-            logger.warning(f"Failed to save report record for project {project_id}: {report_err}")
-            db.rollback()
-
         logger.info(f"PDF generated for project {project_id}: {len(pdf_bytes)} bytes")
         return pdf_bytes
 
     except Exception as e:
         logger.exception(f"PDF generation failed for project {project_id}: {e}")
         return None
-    finally:
-        if db:
-            db.close()

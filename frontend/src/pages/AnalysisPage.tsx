@@ -138,12 +138,18 @@ export default function AnalysisPage() {
       </div>
 
       {/* Analysis Metadata */}
-      {(analysisId || analysisCreatedAt || analysisCompletedAt) && (
+      {(analysisId || projectId || analysisCreatedAt || analysisCompletedAt) && (
         <div className="flex items-center gap-4 md:gap-6 flex-wrap mb-4 px-1">
           {analysisId && (
             <div className="flex items-center gap-1.5">
-              <span className="text-xs text-slate-400">分析编号</span>
-              <span className="text-xs font-mono text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md">{analysisId.slice(0, 8)}</span>
+              <span className="text-xs text-slate-400">分析报告编号</span>
+              <span className="text-xs font-mono text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md">{analysisId}</span>
+            </div>
+          )}
+          {projectId && (
+            <div className="flex items-center gap-1.5">
+              <span className="text-xs text-slate-400">所属项目编号</span>
+              <span className="text-xs font-mono text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md">{projectId}</span>
             </div>
           )}
           {analysisCreatedAt && (

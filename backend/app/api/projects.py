@@ -519,95 +519,7 @@ async def stream_analysis(project_id: str):
     )
 
 
-# ── GET /api/projects/:id/result — frontend-oriented analysis result ──
-@router.get("/{project_id}/result")
-async def get_analysis_result(project_id: str, db: Session = Depends(get_db)):
-    """返回前端友好的分析结果格式，将 AI JSON 转换为前端 types 定义的结构。
-
-    转换规则：
-    - problems → pitfalls（每个问题扁平化为 {id, category, description, severity, location, suggestion}）
-    - summary → {total_pitfalls, critical_count, high_count, medium_count, low_count, score, summary_text}
-    - 严重等级按 heuristic 从 critique 文本匹配判断
-    """
-    project = db.query(Project).filter(Project.id == project_id).first()
-    if not project:
-        raise HTTPException(status_code=404, detail="项目不存在")
-
-    analysis = (
-        db.query(Analysis)
-        .filter(Analysis.project_id == project_id)
-        .order_by(Analysis.created_at.desc())
-        .first()
-    )
-    if not analysis:
-        raise HTTPException(status_code=404, detail="分析结果尚未生成")
-
-    # 失败时返回 error_message
-    if analysis.status == "failed":
-        return {
-            "id": analysis.id,
-            "project_id": project_id,
-            "status": "failed",
-            "summary": {
-                "total_pitfalls": 0,
-                "critical_count": 0,
-                "high_count": 0,
-                "medium_count": 0,
-                "low_count": 0,
-                "score": 0,
-                "summary_text": analysis.error_message or "分析失败",
-            },
-            "pitfalls": [],
-            "error_message": analysis.error_message,
-            "completed_at": analysis.completed_at,
-            "created_at": analysis.created_at,
-        }
-
-    raw_data = analysis.raw_result_json or {}
-    problems = raw_data.get("problems", [])
-    summary_text = raw_data.get("summary", "")
-
-    # 转换 summary
-    score = _calculate_score(len(problems))
-    severity_counts = _count_severities(problems)
-
-    # 转换 problems → pitfalls
-    pitfalls = []
-    for i, p in enumerate(problems):
-        if not isinstance(p, dict):
-            continue
-        severity = _infer_severity(p)
-        pitfalls.append({
-            "id": str(i + 1),
-            "category": _infer_category(p),
-            "description": p.get("title", p.get("critique", "")),
-            "severity": severity,
-            "location": p.get("location"),
-            "suggestion": p.get("alternative", ""),
-            "critique": p.get("critique"),
-            "trap_explanation": p.get("trap_explanation"),
-            "bbox": p.get("bbox"),
-        })
-
-    return {
-        "id": analysis.id,
-        "project_id": project_id,
-        "status": "completed",
-        "summary": {
-            "total_pitfalls": len(pitfalls),
-            "critical_count": severity_counts["critical"],
-            "high_count": severity_counts["high"],
-            "medium_count": severity_counts["medium"],
-            "low_count": severity_counts["low"],
-            "score": score,
-            "summary_text": summary_text,
-        },
-        "pitfalls": pitfalls,
-        "error_message": None,
-        "completed_at": analysis.completed_at,
-        "created_at": analysis.created_at,
-    }
-
+# ── Shared Helpers: Analysis Result Building ───────────────────────
 
 def _calculate_score(problem_count: int) -> int:
     """根据问题数量估算评分 (0-100)"""
@@ -673,6 +585,106 @@ def _infer_category(problem: dict) -> str:
             if kw in combined or kw in location:
                 return category
     return "其他"
+
+
+def _build_result_data(analysis) -> dict:
+    """从 Analysis 原始数据构建前端/PDF 共用的结果数据结构。
+
+    这是 `/api/projects/{id}/result` 和 PDF 生成的共享数据处理逻辑，
+    保证两端展示的数据完全一致。
+    """
+    raw_data = analysis.raw_result_json or {}
+    problems = raw_data.get("problems", [])
+    summary_text = raw_data.get("summary", "")
+
+    severity_counts = _count_severities(problems)
+
+    # 从 raw_result_json 中取 score（优先级最高）
+    raw_summary = raw_data.get("summary", {})
+    if isinstance(raw_summary, dict) and "score" in raw_summary:
+        score = raw_summary["score"]
+    else:
+        score = _calculate_score(len(problems))
+
+    pitfalls = []
+    for i, p in enumerate(problems):
+        if not isinstance(p, dict):
+            continue
+        severity = _infer_severity(p)
+        pitfalls.append({
+            "id": str(i + 1),
+            "category": _infer_category(p),
+            "description": p.get("title", p.get("critique", "")),
+            "severity": severity,
+            "location": p.get("location"),
+            "suggestion": p.get("alternative", ""),
+            "critique": p.get("critique"),
+            "trap_explanation": p.get("trap_explanation"),
+            "bbox": p.get("bbox"),
+        })
+
+    return {
+        "id": analysis.id,
+        "project_id": analysis.project_id,
+        "status": "completed",
+        "summary": {
+            "total_pitfalls": len(pitfalls),
+            "critical_count": severity_counts["critical"],
+            "high_count": severity_counts["high"],
+            "medium_count": severity_counts["medium"],
+            "low_count": severity_counts["low"],
+            "score": score,
+            "summary_text": summary_text,
+        },
+        "pitfalls": pitfalls,
+        "error_message": None,
+        "completed_at": str(analysis.completed_at or analysis.created_at or ""),
+        "created_at": str(analysis.created_at or ""),
+    }
+
+
+# ── GET /api/projects/:id/result — frontend-oriented analysis result ──
+@router.get("/{project_id}/result")
+async def get_analysis_result(project_id: str, db: Session = Depends(get_db)):
+    """返回前端友好的分析结果格式，将 AI JSON 转换为前端 types 定义的结构。
+
+    使用共享的 _build_result_data() 保证与 PDF 生成逻辑一致。
+    """
+    project = db.query(Project).filter(Project.id == project_id).first()
+    if not project:
+        raise HTTPException(status_code=404, detail="项目不存在")
+
+    analysis = (
+        db.query(Analysis)
+        .filter(Analysis.project_id == project_id)
+        .order_by(Analysis.created_at.desc())
+        .first()
+    )
+    if not analysis:
+        raise HTTPException(status_code=404, detail="分析结果尚未生成")
+
+    # 失败时返回 error_message
+    if analysis.status == "failed":
+        return {
+            "id": analysis.id,
+            "project_id": project_id,
+            "status": "failed",
+            "summary": {
+                "total_pitfalls": 0,
+                "critical_count": 0,
+                "high_count": 0,
+                "medium_count": 0,
+                "low_count": 0,
+                "score": 0,
+                "summary_text": analysis.error_message or "分析失败",
+            },
+            "pitfalls": [],
+            "error_message": analysis.error_message,
+            "completed_at": analysis.completed_at,
+            "created_at": analysis.created_at,
+        }
+
+    return _build_result_data(analysis)
 
 
 # ── GET /api/projects/:id/report — report info (JSON) ──────────────
@@ -745,18 +757,69 @@ async def get_report_info(project_id: str, db: Session = Depends(get_db)):
 # ── GET /api/projects/:id/report/pdf — download PDF ────────────────
 @router.get("/{project_id}/report/pdf")
 async def download_report_pdf(project_id: str, db: Session = Depends(get_db)):
+    """生成并下载 PDF 报告。
+
+    使用 _build_result_data() 共享逻辑处理数据（与 /result 端点一致），
+    再传递给 generate_pdf() 生成 PDF。
+    """
     project = db.query(Project).filter(Project.id == project_id).first()
     if not project:
         raise HTTPException(status_code=404, detail="项目不存在")
 
+    # 获取分析数据（使用与 /result 端点相同的处理逻辑）
+    analysis = (
+        db.query(Analysis)
+        .filter(Analysis.project_id == project_id, Analysis.status == "completed")
+        .order_by(Analysis.completed_at.desc())
+        .first()
+    )
+    if not analysis or not analysis.raw_result_json:
+        raise HTTPException(status_code=503, detail="请先完成分析")
+
+    result_data = _build_result_data(analysis)
+
+    # 获取图片数据
+    images = (
+        db.query(ProjectImage)
+        .filter(ProjectImage.project_id == project_id)
+        .all()
+    )
+    images_data = [
+        {
+            "id": img.id,
+            "original_name": img.original_filename,
+            "original_filename": img.original_filename,
+            "storage_path": img.storage_path,
+            "width": img.width,
+            "height": img.height,
+        }
+        for img in images
+    ]
+
+    # 生成 PDF
     try:
-        pdf_bytes = generate_pdf(project_id)
+        pdf_bytes = generate_pdf(project_id, result_data, images_data)
     except Exception as e:
         logger.exception(f"PDF generation error for project {project_id}: {e}")
         raise HTTPException(status_code=503, detail=f"PDF 生成失败：{str(e)}")
 
     if pdf_bytes is None:
         raise HTTPException(status_code=503, detail="PDF 生成失败，请确认分析已完成且包含有效分析数据")
+
+    # 保存 Report 记录
+    try:
+        report_record = db.query(Report).filter(Report.project_id == project_id).first()
+        if not report_record:
+            report_record = Report(
+                project_id=project_id,
+                analysis_id=analysis.id,
+                file_path=f"generated/{project_id[:8]}.pdf",
+            )
+            db.add(report_record)
+            db.commit()
+    except Exception as report_err:
+        logger.warning(f"Failed to save report record for project {project_id}: {report_err}")
+        db.rollback()
 
     return Response(
         content=pdf_bytes,
