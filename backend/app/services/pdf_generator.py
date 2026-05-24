@@ -6,6 +6,7 @@ Key fixes:
 1. Uses extracted TTF font (not .ttc) to avoid reportlab's CJK rendering bug
 2. Properly embeds uploaded images into the PDF
 3. Draws bounding box annotations on images for better visual feedback
+4. Properly sanitizes HTML entities to avoid ReportLab XML parsing errors
 """
 
 import io
@@ -151,7 +152,7 @@ def _build_content(project_id: str, analysis_data: dict, images_data: list) -> l
     summary_text = summary.get("summary_text", "")
     if summary_text:
         story.append(Paragraph("总体评估", S["h2"]))
-        story.append(Paragraph(summary_text, S["body"]))
+        story.append(Paragraph(_sanitize_html(summary_text), S["body"]))
         story.append(Spacer(1, 4 * mm))
 
     # Pitfall counts
@@ -161,18 +162,13 @@ def _build_content(project_id: str, analysis_data: dict, images_data: list) -> l
         ["中", str(summary.get("medium_count", 0)), _COLORS["medium"]],
         ["低", str(summary.get("low_count", 0)), _COLORS["low"]],
     ]
-    counts_table = Table(
-        [["严重等级", "数量", ""]] + counts_data,
-        colWidths=[80, 60, 60],
-        rowHeights=[24, 20, 20, 20, 20],
-    )
     cf = S["cell_severity"]
     header_style = ParagraphStyle("ch", parent=cf, textColor=colors.white, fontSize=9)
     ts = TableStyle([
         ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor(_COLORS["primary"])),
         ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
         ("ALIGN", (0, 0), (-1, -1), "CENTER"),
-            ("FONTNAME", (0, 0), (-1, -1), S["use_font"]),
+        ("FONTNAME", (0, 0), (-1, -1), S["use_font"]),
         ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor(_COLORS["border"])),
         ("BACKGROUND", (2, 1), (2, 1), colors.HexColor(_COLORS["critical"])),
         ("BACKGROUND", (2, 2), (2, 2), colors.HexColor(_COLORS["high"])),
@@ -309,7 +305,7 @@ def _build_image_section(img_info: dict, analysis_data: dict, idx: int):
 
     # Title
     original_name = img_info.get("original_name", img_info.get("original_filename", f"图片{idx+1}"))
-    elements.append(Paragraph(f"📷 {original_name}", S["h2"]))
+    elements.append(Paragraph(f"📷 {_sanitize_html(original_name)}", S["h2"]))
     elements.append(Spacer(1, 2 * mm))
 
     # Check if image file exists
@@ -320,7 +316,7 @@ def _build_image_section(img_info: dict, analysis_data: dict, idx: int):
         storage_path = os.path.abspath(storage_path)
     if not storage_path or not os.path.exists(storage_path):
         logger.warning(f"Image file not found: storage_path={storage_path}, original={original_name}")
-        elements.append(Paragraph(f"[图片文件 {original_name} 未找到]", S["body"]))
+        elements.append(Paragraph(f"[图片文件 {_sanitize_html(original_name)} 未找到]", S["body"]))
         return KeepTogether(elements)
 
     # Try to read image dimensions for fitting
@@ -351,7 +347,7 @@ def _build_image_section(img_info: dict, analysis_data: dict, idx: int):
         elements.append(pdf_img)
     except Exception as e:
         logger.warning(f"Could not embed image {storage_path}: {e}")
-        elements.append(Paragraph(f"[图片 {original_name} 无法嵌入 PDF: {e}]", S["body"]))
+        elements.append(Paragraph(f"[图片 {_sanitize_html(original_name)} 无法嵌入 PDF: {e}]", S["body"]))
         return KeepTogether(elements)
 
     # Try to find bbox annotations for this image
@@ -402,7 +398,7 @@ def _build_image_section(img_info: dict, analysis_data: dict, idx: int):
                         color = _SEVERITY_COLORS.get(sev, (_COLORS["text"], _COLORS["bg_light"]))[0]
                         elements.append(Paragraph(
                             f'<font color="{color}">■</font> '
-                            f'<font color="{_COLORS["text"]}"><b>[{_severity_label(sev)}]</b> {desc}</font>',
+                            f'<font color="{_COLORS["text"]}"><b>[{_severity_label(sev)}]</b> {_sanitize_html(desc)}</font>',
                             S["body_small"],
                         ))
 
@@ -414,14 +410,17 @@ def _build_image_section(img_info: dict, analysis_data: dict, idx: int):
 
 def _build_pitfall_card(item: dict, S: dict):
     """Build a card for one pitfall item."""
-    sev = item.get("severity", "medium")
+    sev = item.get("severity", "medium") or "medium"
+    if sev not in _SEVERITY_COLORS:
+        sev = "medium"
     sev_color, sev_bg = _SEVERITY_COLORS.get(sev, (_COLORS["text"], _COLORS["bg_light"]))
     sev_label = _severity_label(sev)
-    description = item.get("description", "")
-    category = item.get("category", "其他")
-    location = item.get("location", "")
-    suggestion = item.get("suggestion", "")
-    critique = item.get("critique", "")
+    description = item.get("description") or ""
+    category = item.get("category", "其他") or "其他"
+    location = item.get("location") or ""
+    suggestion = item.get("suggestion") or ""
+    critique = item.get("critique") or ""
+    trap_explanation = item.get("trap_explanation") or ""
 
     card_data = []
 
@@ -430,14 +429,14 @@ def _build_pitfall_card(item: dict, S: dict):
     header_text = (
         f'<font color="{sev_color}">●</font> '
         f'<font color="{sev_color}"><b>[{sev_label}]</b></font> '
-        f'<font color="{_COLORS["text"]}">{description}</font>'
+        f'<font color="{_COLORS["text"]}">{_sanitize_html(description)}</font>'
     )
     card_data.append([Paragraph(header_text, cell_header)])
 
     # Info row
-    info_parts = [f'<font color="{_COLORS["text_muted"]}">分类：{category}</font>']
+    info_parts = [f'<font color="{_COLORS["text_muted"]}">分类：{_sanitize_html(category)}</font>']
     if location:
-        info_parts.append(f'<font color="{_COLORS["text_muted"]}"> | 位置：{location}</font>')
+        info_parts.append(f'<font color="{_COLORS["text_muted"]}"> | 位置：{_sanitize_html(location)}</font>')
     info_text = "".join(info_parts)
     card_data.append([Paragraph(info_text, S["body_small"])])
 
@@ -445,7 +444,17 @@ def _build_pitfall_card(item: dict, S: dict):
     if critique:
         card_data.append([
             Paragraph(
-                f'<font color="{_COLORS["text_muted"]}"><b>分析：</b>{critique}</font>',
+                f'<font color="{_COLORS["text_muted"]}"><b>问题分析：</b>{_sanitize_html(critique)}</font>',
+                S["body_small"],
+            )
+        ])
+
+    # Trap Explanation
+    if trap_explanation:
+        card_data.append([
+            Paragraph(
+                f'<font color="{_COLORS["critical"]}"><b>陷阱说明：</b></font>'
+                f'<font color="{_COLORS["text"]}">{_sanitize_html(trap_explanation)}</font>',
                 S["body_small"],
             )
         ])
@@ -455,7 +464,7 @@ def _build_pitfall_card(item: dict, S: dict):
         card_data.append([
             Paragraph(
                 f'<font color="{_COLORS["accent"]}"><b>✓ 建议：</b></font>'
-                f'<font color="{_COLORS["text"]}">{suggestion}</font>',
+                f'<font color="{_COLORS["text"]}">{_sanitize_html(suggestion)}</font>',
                 S["body_small"],
             )
         ])
@@ -472,6 +481,23 @@ def _build_pitfall_card(item: dict, S: dict):
         ("LINEBELOW", (0, 0), (-1, 0), 0.5, colors.HexColor(_COLORS["border"])),
     ]))
     return card
+
+
+def _sanitize_html(text: str) -> str:
+    """Escape HTML special characters to prevent ReportLab XML parsing errors.
+    
+    The order matters: '&' must be escaped first to avoid double-escaping
+    other entities that may already be present in the text.
+    """
+    if not isinstance(text, str):
+        text = str(text)
+    # Escape & first, then the rest
+    text = text.replace("&", "&")
+    text = text.replace("<", "<")
+    text = text.replace(">", ">")
+    text = text.replace('"', "&quot;")
+    text = text.replace("'", "&#39;")
+    return text
 
 
 # ── Page Templates ─────────────────────────────────────────────────
@@ -563,12 +589,16 @@ def generate_pdf(project_id: str) -> Optional[bytes]:
         sev_count = {"critical": 0, "high": 0, "medium": 0, "low": 0}
         pitfalls_list = []
         for p in problems:
-            sev = p.get("severity", "medium")
+            if not isinstance(p, dict):
+                continue
+            sev = p.get("severity", "medium") or "medium"
+            if sev not in sev_count:
+                sev = "medium"
             sev_count[sev] = sev_count.get(sev, 0) + 1
             pitfalls_list.append({
                 "id": str(len(pitfalls_list) + 1),
                 "category": p.get("category", "其他"),
-                "description": p.get("title", p.get("critique", "")),
+                "description": p.get("title") or p.get("critique", ""),
                 "severity": sev,
                 "location": p.get("location", ""),
                 "suggestion": p.get("alternative", ""),

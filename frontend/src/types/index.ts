@@ -51,6 +51,8 @@ export interface PitfallItem {
   severity: PitfallSeverity;
   location?: string;
   suggestion: string;
+  critique?: string;
+  trap_explanation?: string;
   regulation_ref?: string;
   image_refs?: string[];
   coordinates?: { x: number; y: number }[];
@@ -63,14 +65,17 @@ export interface AnalysisSummary {
   medium_count: number;
   low_count: number;
   score: number; // 0-100
+  summary_text?: string;
 }
 
 export interface AnalysisResult {
+  id?: string;
   project_id: string;
   status: AnalysisStatus;
   summary: AnalysisSummary;
   pitfalls: PitfallItem[];
   raw_response?: string;
+  created_at?: string;
   started_at?: string;
   completed_at?: string;
   error_message?: string;

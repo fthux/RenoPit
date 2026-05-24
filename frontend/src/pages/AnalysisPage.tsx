@@ -97,7 +97,13 @@ export default function AnalysisPage() {
     )
   }
 
-  const { summary, pitfalls } = result
+  const { id: analysisId, summary, pitfalls, created_at: analysisCreatedAt, completed_at: analysisCompletedAt } = result
+
+  const formatDateTime = (iso: string | undefined) => {
+    if (!iso) return '—'
+    const d = new Date(iso)
+    return d.toLocaleString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
+  }
 
   const getScoreLevel = (score: number) => {
     if (score >= 80) return { color: 'text-green-600', bg: 'bg-green-500', label: '优秀', desc: '整体设计良好，仅有少量改进空间' }
@@ -131,29 +137,82 @@ export default function AnalysisPage() {
         </button>
       </div>
 
-      {/* Summary Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-8">
-        <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
-          <div className="flex items-center gap-2 mb-1">
-            <Shield className="w-4 h-4 text-blue-500" />
-            <p className="text-xs text-slate-500 font-medium">总陷阱数</p>
-          </div>
-          <p className="text-3xl font-bold text-slate-800">{summary.total_pitfalls}</p>
-        </div>
-        {(['critical', 'high', 'medium', 'low'] as PitfallSeverity[]).map((s) => {
-          const cfg = severityConfig[s]
-          const Icon = cfg.icon
-          const count = summary[`${s}_count` as keyof typeof summary] as number
-          return (
-            <div key={s} className={`bg-white rounded-2xl border ${cfg.border} p-5 shadow-sm`}>
-              <div className={`flex items-center gap-2 mb-1 ${cfg.color}`}>
-                <Icon className="w-4 h-4" />
-                <p className="text-xs font-medium">{cfg.label}</p>
-              </div>
-              <p className="text-3xl font-bold text-slate-800">{count}</p>
+      {/* Analysis Metadata */}
+      {(analysisId || analysisCreatedAt || analysisCompletedAt) && (
+        <div className="flex items-center gap-4 md:gap-6 flex-wrap mb-4 px-1">
+          {analysisId && (
+            <div className="flex items-center gap-1.5">
+              <span className="text-xs text-slate-400">分析编号</span>
+              <span className="text-xs font-mono text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md">{analysisId.slice(0, 8)}</span>
             </div>
-          )
-        })}
+          )}
+          {analysisCreatedAt && (
+            <div className="flex items-center gap-1.5">
+              <span className="text-xs text-slate-400">开始时间</span>
+              <span className="text-xs text-slate-600 font-medium">{formatDateTime(analysisCreatedAt)}</span>
+            </div>
+          )}
+          {analysisCompletedAt && (
+            <div className="flex items-center gap-1.5">
+              <span className="text-xs text-slate-400">完成时间</span>
+              <span className="text-xs text-slate-600 font-medium">{formatDateTime(analysisCompletedAt)}</span>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Summary text */}
+      {summary.summary_text && (
+        <div className="bg-gradient-to-r from-blue-50 to-indigo-50/50 rounded-2xl border border-blue-100/80 px-5 py-4 mb-6 shadow-sm">
+          <div className="flex items-start gap-3">
+            <div className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center flex-shrink-0 mt-0.5">
+              <ShieldCheck className="w-4 h-4 text-blue-600" />
+            </div>
+            <p className="text-sm text-slate-700 leading-relaxed">{summary.summary_text}</p>
+          </div>
+        </div>
+      )}
+
+      {/* Stats Bar: compact severity distribution */}
+      <div className="bg-white rounded-2xl border border-slate-200 px-5 py-4 mb-8 shadow-sm">
+        <div className="flex items-center gap-4 md:gap-6 flex-wrap">
+          <div className="flex items-center gap-2">
+            <Shield className="w-4 h-4 text-slate-400" />
+            <span className="text-sm text-slate-500">陷阱总数</span>
+            <span className="text-xl font-bold text-slate-800">{summary.total_pitfalls}</span>
+          </div>
+          <div className="hidden md:block w-px h-6 bg-slate-200" />
+          {(['critical', 'high', 'medium', 'low'] as PitfallSeverity[]).map((s, idx) => {
+            const cfg = severityConfig[s]
+            const Icon = cfg.icon
+            const count = summary[`${s}_count` as keyof typeof summary] as number
+            return (
+              <div key={s} className="flex items-center gap-1.5">
+                <Icon className={`w-3.5 h-3.5 ${cfg.color}`} />
+                <span className="text-xs text-slate-500">{cfg.label}</span>
+                <span className={`text-lg font-bold ${cfg.color}`}>{count}</span>
+                {idx < 3 && <span className="hidden md:inline text-slate-200 mx-0.5">/</span>}
+              </div>
+            )
+          })}
+        </div>
+        {/* Distribution bar */}
+        {summary.total_pitfalls > 0 && (
+          <div className="mt-3 flex h-2 rounded-full overflow-hidden bg-slate-100">
+            {(['critical', 'high', 'medium', 'low'] as PitfallSeverity[]).map((s) => {
+              const count = summary[`${s}_count` as keyof typeof summary] as number
+              const pct = (count / summary.total_pitfalls) * 100
+              if (pct === 0) return null
+              const barColor = {
+                critical: 'bg-red-500',
+                high: 'bg-orange-400',
+                medium: 'bg-yellow-400',
+                low: 'bg-blue-400',
+              }[s]
+              return <div key={s} className={`${barColor} h-full transition-all duration-700`} style={{ width: `${pct}%` }} />
+            })}
+          </div>
+        )}
       </div>
 
       {/* Score Card */}
@@ -219,6 +278,25 @@ function PitfallCard({ item }: { item: PitfallItem }) {
             )}
           </div>
           <p className="text-sm text-slate-700 font-medium leading-relaxed">{item.description}</p>
+
+          {item.critique && (
+            <div className="mt-3 p-3 bg-amber-50/80 rounded-xl border border-amber-100/80">
+              <p className="text-xs text-slate-600">
+                <span className="font-semibold text-amber-700">⚠ 问题分析：</span>
+                {item.critique}
+              </p>
+            </div>
+          )}
+
+          {item.trap_explanation && (
+            <div className="mt-3 p-3 bg-red-50/80 rounded-xl border border-red-100/80">
+              <p className="text-xs text-slate-600">
+                <span className="font-semibold text-red-700">⛔ 陷阱说明：</span>
+                {item.trap_explanation}
+              </p>
+            </div>
+          )}
+
           <div className="mt-3 p-3 bg-green-50/50 rounded-xl border border-green-100/50">
             <p className="text-xs text-slate-600">
               <span className="font-semibold text-green-700">✓ 建议：</span>

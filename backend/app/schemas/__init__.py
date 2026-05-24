@@ -7,6 +7,7 @@ from .project import (
     ProjectStatusResponse,
     ProjectResponse,
     ProjectListResponse,
+    DuplicateProjectRequest,
 )
 from .analysis import (
     BBox,
@@ -24,6 +25,7 @@ __all__ = [
     "ProjectStatusResponse",
     "ProjectResponse",
     "ProjectListResponse",
+    "DuplicateProjectRequest",
     "BBox",
     "ProblemItem",
     "AnalysisResponse",

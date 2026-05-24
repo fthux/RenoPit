@@ -40,6 +40,12 @@ class ProjectResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class DuplicateProjectRequest(BaseModel):
+    """复制项目请求体"""
+    name: Optional[str] = Field(default=None, max_length=255, description="新项目名称，留空自动生成为「原名称（副本）」")
+    copy_files: bool = Field(default=True, description="是否复制关联的文件和图片")
+
+
 class ProjectListResponse(BaseModel):
     """项目列表响应"""
     projects: List[ProjectResponse]

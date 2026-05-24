@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Plus, FolderOpen, Loader2, Trash2, Clock, CheckCircle2, AlertCircle, FileText, Image, FileWarning } from 'lucide-react'
+import { Plus, FolderOpen, Loader2, Trash2, Copy, Clock, CheckCircle2, AlertCircle, FileText, Image, FileWarning } from 'lucide-react'
 import type { Project } from '../types'
 import ConfirmDialog from '../components/ConfirmDialog'
 
@@ -38,6 +38,16 @@ export default function ProjectsPage() {
     pollRef.current = setInterval(fetchProjects, 3000)
     return () => { if (pollRef.current) clearInterval(pollRef.current) }
   }, [projects, fetchProjects])
+
+  async function duplicateProject(id: string) {
+    try {
+      const res = await fetch(`${API}/projects/${id}/duplicate`, { method: 'POST' })
+      if (res.ok) {
+        const newProject = await res.json()
+        setProjects((prev) => [newProject, ...prev])
+      }
+    } catch (err) { console.error(err) }
+  }
 
   async function deleteProject(id: string) {
     try {
@@ -195,6 +205,13 @@ export default function ProjectsPage() {
                           </div>
 
                           <div className="flex items-center gap-2">
+                            <button
+                              onClick={async (e) => { e.stopPropagation(); await duplicateProject(p.id); }}
+                              className="p-2 text-slate-300 hover:text-blue-400 hover:bg-blue-50 rounded-xl transition-all opacity-0 group-hover:opacity-100"
+                              title="复制项目"
+                            >
+                              <Copy className="w-4 h-4" />
+                            </button>
                             <button
                               onClick={(e) => { e.stopPropagation(); setDeleteConfirm(p.id) }}
                               className="p-2 text-slate-300 hover:text-red-400 hover:bg-red-50 rounded-xl transition-all opacity-0 group-hover:opacity-100"

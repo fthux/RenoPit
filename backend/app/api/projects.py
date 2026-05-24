@@ -6,6 +6,7 @@ import asyncio
 import logging
 import os
 import secrets
+import shutil
 import uuid
 from datetime import datetime
 from typing import Optional, List
@@ -20,6 +21,7 @@ from ..schemas import (
     ProjectCreateRequest,
     ProjectResponse,
     ProjectListResponse,
+    DuplicateProjectRequest,
     AnalysisResponse,
 )
 from ..services.file_storage import save_upload_file
@@ -73,6 +75,86 @@ async def create_project(
 
     logger.info(f"Project created: id={project.id}, name={project.name}, input_text={'yes' if body.input_text else 'no'}")
     return _project_to_response(project)
+
+
+# ── POST /api/projects/:id/duplicate — duplicate project ──────────
+@router.post("/{project_id}/duplicate", response_model=ProjectResponse, status_code=201)
+async def duplicate_project(
+    project_id: str,
+    body: Optional[DuplicateProjectRequest] = None,
+    db: Session = Depends(get_db),
+):
+    """复制一个已有项目（包括文件/图片在内），但不复制分析结果和报告。"""
+    source = db.query(Project).filter(Project.id == project_id).first()
+    if not source:
+        raise HTTPException(status_code=404, detail="项目不存在")
+
+    new_id = str(uuid.uuid4())
+    copy_files = body.copy_files if body else True
+    new_name = body.name if body and body.name else f"{source.name}（副本）"
+    # 确保名称不超过 255 字符
+    if len(new_name) > 255:
+        new_name = new_name[:252] + "..."
+
+    # 创建新项目
+    new_project = Project(
+        id=new_id,
+        name=new_name,
+        description=source.description,
+        access_token=_generate_access_token(),
+        status="pending",
+        input_text=source.input_text,
+    )
+    db.add(new_project)
+    db.flush()  # 先 flush 以获取新项目的 ID 用于关联
+
+    # 复制文件和图片
+    if copy_files:
+        # 复制图片
+        source_images = db.query(ProjectImage).filter(ProjectImage.project_id == project_id).all()
+        for img in source_images:
+            new_img_id = str(uuid.uuid4())
+            # 构建新路径
+            new_storage_path = img.storage_path.replace(project_id, new_id, 1)
+            # 如果文件存在，复制物理文件
+            if os.path.exists(img.storage_path):
+                os.makedirs(os.path.dirname(new_storage_path), exist_ok=True)
+                shutil.copy2(img.storage_path, new_storage_path)
+            new_image = ProjectImage(
+                id=new_img_id,
+                project_id=new_id,
+                original_filename=img.original_filename,
+                storage_path=new_storage_path,
+                file_size=img.file_size,
+                width=img.width,
+                height=img.height,
+            )
+            db.add(new_image)
+
+        # 复制文件
+        source_files = db.query(ProjectFile).filter(ProjectFile.project_id == project_id).all()
+        for f in source_files:
+            new_file_id = str(uuid.uuid4())
+            new_storage_path = f.storage_path.replace(project_id, new_id, 1)
+            if os.path.exists(f.storage_path):
+                os.makedirs(os.path.dirname(new_storage_path), exist_ok=True)
+                shutil.copy2(f.storage_path, new_storage_path)
+            new_file = ProjectFile(
+                id=new_file_id,
+                project_id=new_id,
+                original_filename=f.original_filename,
+                storage_path=new_storage_path,
+                file_type=f.file_type,
+                extracted_text=f.extracted_text,
+                file_size=f.file_size,
+            )
+            db.add(new_file)
+
+    db.commit()
+    db.refresh(new_project)
+
+    logger.info(f"Project duplicated: {project_id} → {new_id}, name={new_name}")
+    return _project_to_response(new_project)
 
 
 # ── DELETE /api/projects/:id — delete project ──────────────────────
@@ -667,9 +749,14 @@ async def download_report_pdf(project_id: str, db: Session = Depends(get_db)):
     if not project:
         raise HTTPException(status_code=404, detail="项目不存在")
 
-    pdf_bytes = generate_pdf(project_id)
+    try:
+        pdf_bytes = generate_pdf(project_id)
+    except Exception as e:
+        logger.exception(f"PDF generation error for project {project_id}: {e}")
+        raise HTTPException(status_code=503, detail=f"PDF 生成失败：{str(e)}")
+
     if pdf_bytes is None:
-        raise HTTPException(status_code=503, detail="PDF 生成失败，请确认分析已完成")
+        raise HTTPException(status_code=503, detail="PDF 生成失败，请确认分析已完成且包含有效分析数据")
 
     return Response(
         content=pdf_bytes,
