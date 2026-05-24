@@ -30,6 +30,11 @@
   animation: slide-in 0.3s ease-out;
 }
 
+/* Smooth scrolling for landing page navigation */
+html {
+  scroll-behavior: smooth;
+}
+
 /* Landing page animations */
 @keyframes pulse-slow {
   0%, 100% {

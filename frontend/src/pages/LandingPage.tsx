@@ -1,6 +1,14 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Shield, Sparkles, Zap, ArrowRight, Layers, BarChart3, FileText, Target, Users, Quote, Eye } from 'lucide-react'
+import { Shield, Sparkles, Zap, ArrowRight, Layers, BarChart3, FileText, Target, Users, Quote, Eye, BookOpen, Star } from 'lucide-react'
+
+function GitHubIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+      <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z" />
+    </svg>
+  )
+}
 
 export default function LandingPage() {
   const navigate = useNavigate()
@@ -10,6 +18,13 @@ export default function LandingPage() {
     const onScroll = () => setScrolled(window.scrollY > 60)
     window.addEventListener('scroll', onScroll, { passive: true })
     return () => window.removeEventListener('scroll', onScroll)
+  }, [])
+
+  const scrollToSection = useCallback((id: string) => {
+    const el = document.getElementById(id)
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth' })
+    }
   }, [])
 
   const features = [
@@ -67,25 +82,50 @@ export default function LandingPage() {
               <span className="text-blue-400">闭</span>
             </span>
           </div>
-          <nav className="flex items-center gap-4">
+          {/* Centered nav links - visible on md+ screens */}
+          <nav className="hidden md:flex absolute left-1/2 -translate-x-1/2 items-center gap-6">
             <button
-              onClick={() => navigate('/projects')}
-              className="text-sm text-gray-400 hover:text-white transition-colors px-4 py-2"
-            >
-              项目列表
-            </button>
-            <button
-              onClick={() => navigate('/projects/new')}
-              className="text-sm font-medium px-5 py-2 rounded-xl bg-white text-[#0a0a0f] hover:bg-gray-200 transition-all duration-300 shadow-lg shadow-white/10 hover:shadow-white/20 hover:scale-[1.02] active:scale-[0.98]"
+              onClick={() => scrollToSection('get-started')}
+              className="text-sm text-gray-400 hover:text-white transition-colors px-4 py-2 cursor-pointer"
             >
               开始使用
             </button>
+            <button
+              onClick={() => scrollToSection('introduction')}
+              className="text-sm text-gray-400 hover:text-white transition-colors px-4 py-2 cursor-pointer"
+            >
+              功能介绍
+            </button>
+            <button
+              onClick={() => scrollToSection('about-us')}
+              className="text-sm text-gray-400 hover:text-white transition-colors px-4 py-2 cursor-pointer"
+            >
+              关于我们
+            </button>
           </nav>
+
+          {/* Right side action buttons */}
+          <div className="flex items-center gap-2 md:gap-3">
+            <button
+              onClick={() => window.open('https://deepwiki.com/fthux/RenovationPitfallAnalyzer', '_blank')}
+              className="text-sm text-gray-400 hover:text-white transition-colors px-3 md:px-4 py-2 cursor-pointer inline-flex items-center gap-1.5"
+            >
+              <BookOpen className="w-4 h-4" />
+              <span className="hidden sm:inline">文档</span>
+            </button>
+            <button
+              onClick={() => window.open('https://github.com/fthux/RenovationPitfallAnalyzer', '_blank')}
+              className="text-sm font-medium px-4 md:px-5 py-2 rounded-xl bg-white text-[#0a0a0f] hover:bg-gray-200 transition-all duration-300 shadow-lg shadow-white/10 hover:shadow-white/20 hover:scale-[1.02] active:scale-[0.98] cursor-pointer inline-flex items-center gap-1.5"
+            >
+              <GitHubIcon className="w-4 h-4" />
+              <span className="hidden sm:inline">GitHub</span>
+            </button>
+          </div>
         </div>
       </header>
 
       {/* Hero Section */}
-      <section className="relative z-10 pt-32 pb-20 px-6">
+      <section id="get-started" className="relative z-10 pt-24 md:pt-32 pb-16 md:pb-20 px-4 md:px-6">
         <div className="max-w-5xl mx-auto text-center">
           {/* Badge */}
           <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-white/5 border border-white/10 text-sm text-gray-400 mb-8 backdrop-blur-sm">
@@ -94,27 +134,27 @@ export default function LandingPage() {
           </div>
 
           {/* Title */}
-          <h1 className="text-5xl md:text-7xl lg:text-8xl font-bold tracking-tight mb-6 leading-[1.1]">
+          <h1 className="text-4xl md:text-7xl lg:text-8xl font-bold tracking-tight mb-6 leading-[1.1]">
             <span className="text-white">装修</span>
             <span className="bg-gradient-to-r from-blue-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">闭坑</span>
             <br />
-            <span className="text-3xl md:text-4xl lg:text-5xl text-gray-400 font-normal">
+            <span className="text-xl md:text-4xl lg:text-5xl text-gray-400 font-normal">
               用 <span className="text-white font-bold">"装闭"</span> 就够了
             </span>
           </h1>
 
           {/* Subtitle */}
-          <p className="text-lg md:text-xl text-gray-400 max-w-2xl mx-auto mb-10 leading-relaxed">
+          <p className="text-base md:text-xl text-gray-400 max-w-2xl mx-auto mb-10 leading-relaxed px-2">
             上传你的设计图纸，AI 自动揪出那些只为增加预算的"垃圾设计"、
             <br className="hidden md:block" />
             过度装修、卫生死角、空间压迫感，揭露装修公司套路，给出更实用的方案。
           </p>
 
           {/* CTA Buttons */}
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-3 md:gap-4">
             <button
               onClick={() => navigate('/projects/new')}
-              className="group relative px-8 py-4 rounded-2xl bg-white text-[#0a0a0f] font-semibold text-lg transition-all duration-300 hover:scale-[1.02] active:scale-[0.98] shadow-2xl shadow-white/20 hover:shadow-white/30"
+              className="group relative px-8 py-4 rounded-2xl bg-white text-[#0a0a0f] font-semibold text-lg transition-all duration-300 hover:scale-[1.02] active:scale-[0.98] shadow-2xl shadow-white/20 hover:shadow-white/30 cursor-pointer"
             >
               <span className="flex items-center gap-2">
                 免费检测
@@ -122,20 +162,21 @@ export default function LandingPage() {
               </span>
             </button>
             <button
-              onClick={() => navigate('/projects')}
-              className="px-8 py-4 rounded-2xl border border-white/10 text-gray-300 font-medium text-lg transition-all duration-300 hover:bg-white/5 hover:border-white/20 hover:text-white backdrop-blur-sm"
+              onClick={() => window.open('https://github.com/fthux/RenovationPitfallAnalyzer', '_blank')}
+              className="px-8 py-4 rounded-2xl border border-white/10 text-gray-300 font-medium text-lg transition-all duration-300 hover:bg-white/5 hover:border-white/20 hover:text-white backdrop-blur-sm cursor-pointer inline-flex items-center gap-2"
             >
-              查看项目列表
+              <Star className="w-5 h-5 text-yellow-400" />
+              Star on GitHub
             </button>
           </div>
         </div>
       </section>
 
       {/* Features Section */}
-      <section className="relative z-10 py-24 px-6">
+      <section id="introduction" className="relative z-10 py-16 md:py-24 px-4 md:px-6">
         <div className="max-w-6xl mx-auto">
-          <div className="text-center mb-16">
-            <h2 className="text-3xl md:text-5xl font-bold mb-4">
+          <div className="text-center mb-12 md:mb-16">
+            <h2 className="text-2xl md:text-5xl font-bold mb-4">
               <span className="bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">
                 揭露套路，回归实用
               </span>
@@ -145,7 +186,7 @@ export default function LandingPage() {
             </p>
           </div>
 
-          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-5">
+          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-5">
             {features.map((feat, i) => {
               const Icon = feat.icon
               return (
@@ -170,16 +211,16 @@ export default function LandingPage() {
       </section>
 
       {/* How it works */}
-      <section className="relative z-10 py-24 px-6 border-t border-white/5">
+      <section className="relative z-10 py-16 md:py-24 px-4 md:px-6 border-t border-white/5">
         <div className="max-w-5xl mx-auto">
-          <div className="text-center mb-16">
-            <h2 className="text-3xl md:text-5xl font-bold mb-4 text-white">
+          <div className="text-center mb-12 md:mb-16">
+            <h2 className="text-2xl md:text-5xl font-bold mb-4 text-white">
               三步揪出垃圾设计
             </h2>
             <p className="text-gray-500 text-lg">上传图纸，AI 替你逐项审查，揭露每一个坑</p>
           </div>
 
-          <div className="grid md:grid-cols-3 gap-8">
+          <div className="grid sm:grid-cols-3 gap-6 md:gap-8">
             {[
               { step: '01', title: '上传图纸', desc: '上传你的设计图纸（PDF/图片）、现场照片，或直接描述你的装修需求', color: 'from-blue-500/20 to-blue-600/10' },
               { step: '02', title: 'AI 逐项审查', desc: 'AI 对照本地知识库和行业标准，逐项筛查卫生死角、空间压迫、增项陷阱等', color: 'from-purple-500/20 to-purple-600/10' },
@@ -198,14 +239,14 @@ export default function LandingPage() {
       </section>
 
       {/* About Us Section */}
-      <section className="relative z-10 py-24 px-6 border-t border-white/5">
+      <section id="about-us" className="relative z-10 py-16 md:py-24 px-4 md:px-6 border-t border-white/5">
         <div className="max-w-5xl mx-auto">
-          <div className="text-center mb-16">
+          <div className="text-center mb-12 md:mb-16">
             <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-white/5 border border-white/10 text-sm text-gray-400 mb-6 backdrop-blur-sm">
               <Users className="w-3.5 h-3.5 text-blue-400" />
               <span>关于我们</span>
             </div>
-            <h2 className="text-3xl md:text-5xl font-bold mb-4 text-white">
+            <h2 className="text-2xl md:text-5xl font-bold mb-4 text-white">
               你的家，不该为别人的利润买单
             </h2>
             <p className="text-gray-400 text-lg max-w-3xl mx-auto leading-relaxed">
@@ -215,7 +256,7 @@ export default function LandingPage() {
             </p>
           </div>
 
-          <div className="grid md:grid-cols-3 gap-6">
+          <div className="grid sm:grid-cols-3 gap-4 md:gap-6">
             <div className="group p-6 rounded-2xl border border-white/5 bg-white/[0.03] hover:bg-white/[0.06] hover:border-white/10 transition-all duration-500">
               <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500/20 to-blue-600/10 border border-white/5 flex items-center justify-center mb-4">
                 <Target className="w-5 h-5 text-blue-400" />
@@ -259,8 +300,8 @@ export default function LandingPage() {
       </section>
 
       {/* Footer */}
-      <footer className="relative z-10 border-t border-white/5 py-8 px-6">
-        <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4">
+      <footer className="relative z-10 border-t border-white/5 py-6 md:py-8 px-4 md:px-6">
+        <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-3 md:gap-4 text-center md:text-left">
           <div className="flex items-center gap-2 text-sm text-gray-500">
             <div className="w-6 h-6 rounded bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white text-xs font-bold">装</div>
             装闭 — 站在消费者一边的装修检测工具
