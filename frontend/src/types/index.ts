@@ -68,13 +68,16 @@ export interface AnalysisSummary {
   summary_text?: string;
 }
 
+/** 文档分析结果映射表，以 project_file_id 为 key，确保同一文件只保留最新一条分析 */
+export type DocumentAnalysesMap = Record<string, DocumentAnalysisResult>;
+
 export interface AnalysisResult {
   id?: string;
   project_id: string;
   status: AnalysisStatus;
   summary: AnalysisSummary;
   pitfalls: PitfallItem[];
-  document_analyses?: DocumentAnalysisResult[];
+  document_analyses?: DocumentAnalysesMap;
   raw_response?: string;
   created_at?: string;
   started_at?: string;
@@ -121,12 +124,34 @@ export interface DocumentAnalysisResult {
   error_message?: string;
   completed_at?: string;
   created_at: string;
+  extra_item_prediction?: ExtraItemPrediction;
 }
 
 export interface DocumentAnalysisList {
   items: DocumentAnalysisResult[];
   total: number;
 }
+
+// --- Extra Item Prediction ---
+export interface PredictedItem {
+  name: string;
+  probability: string;
+  estimated_amount: number[];
+  trigger_phase: string;
+  reason: string;
+  prevention: string;
+}
+
+export interface ExtraItemPrediction {
+  quoted_total: number;
+  predicted_actual_total: number;
+  confidence_range: number[];
+  risk_level: string;
+  predicted_items: PredictedItem[];
+}
+
+// Update DocumentAnalysisResult to include optional extra_item_prediction
+// This is done via declaration merging approach below
 
 // --- SSE Events ---
 export type SSEEventType =

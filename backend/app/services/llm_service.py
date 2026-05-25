@@ -487,6 +487,86 @@ async def analyze_document(
             raise RuntimeError(full_error) from fallback_error
 
 
+async def predict_extra_items(
+    document_analysis_json: dict,
+) -> str:
+    """基于报价单分析结果，预测增项与总花费估算
+
+    调用 LLM 分析报价单中已识别的风险项（漏项、模糊计价等），
+    预测装修公司后期可能追加的项目和费用。
+
+    Args:
+        document_analysis_json: 报价单/合同分析的 risks_json 字典
+
+    Returns:
+        LLM 响应文本（期望为 JSON 格式的 extra_item_prediction）
+
+    Raises:
+        RuntimeError: 所有模型调用均失败
+    """
+    from .prompt_builder import build_extra_prediction_prompt
+
+    # 将分析结果序列化为文本摘要
+    import json as json_module
+    analysis_summary_text = json_module.dumps(
+        document_analysis_json,
+        ensure_ascii=False,
+        indent=2,
+    )
+
+    system_prompt = build_extra_prediction_prompt(analysis_summary_text)
+
+    user_message = """请基于以上报价单分析结果和增项套路知识库，预测装修公司最可能追加的增项项目和金额。
+
+请严格按照 JSON 格式输出预测结果。"""
+
+    logger.info(
+        "[LLM] predict_extra_items 开始: analysis_summary_len=%d, system_prompt_len=%d",
+        len(analysis_summary_text), len(system_prompt),
+    )
+
+    provider = settings.AI_MODEL_PROVIDER.lower()
+    last_error = None
+
+    if provider == "gemini":
+        primary_caller = _call_gemini_text
+        primary_name = "Gemini"
+        fallback_caller = _call_openai_text
+        fallback_name = "OpenAI GPT-4o"
+    else:
+        primary_caller = _call_openai_text
+        primary_name = "OpenAI GPT-4o"
+        fallback_caller = _call_gemini_text
+        fallback_name = "Gemini"
+
+    try:
+        logger.info("[LLM] 增项预测尝试主模型: %s", primary_name)
+        return await _retry_with_backoff_text(
+            primary_caller,
+            primary_name,
+            system_prompt,
+            user_message,
+        )
+    except Exception as e:
+        last_error = e
+        logger.error("[LLM] 增项预测主模型 %s 失败: %s", primary_name, str(e))
+        try:
+            logger.info("[LLM] 增项预测尝试备用模型: %s", fallback_name)
+            return await _retry_with_backoff_text(
+                fallback_caller,
+                fallback_name,
+                system_prompt,
+                user_message,
+            )
+        except Exception as fallback_error:
+            full_error = (
+                f"增项预测所有模型调用均失败。主模型({primary_name}): {last_error}，"
+                f"备用模型({fallback_name}): {fallback_error}"
+            )
+            logger.error("[LLM] %s", full_error)
+            raise RuntimeError(full_error) from fallback_error
+
+
 async def _call_openai_text(
     system_prompt: str,
     user_message: str,

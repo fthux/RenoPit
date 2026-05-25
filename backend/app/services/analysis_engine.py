@@ -416,6 +416,56 @@ def run_document_analysis_sync(project_id: str, project_file_id: str) -> dict:
                 doc_analysis.risks_count,
                 doc_analysis.summary[:100] if doc_analysis.summary else "",
             )
+
+            # Step 6.5: 增项预测（仅在报价单分析时触发）
+            if classification.doc_type == "quotation":
+                try:
+                    logger.info(
+                        "[AnalysisEngine] 开始增项预测: project=%s, file=%s",
+                        project_id, project_file_id,
+                    )
+                    from .llm_service import predict_extra_items
+                    loop = asyncio.get_event_loop()
+                    if loop.is_running():
+                        with concurrent.futures.ThreadPoolExecutor() as executor:
+                            pred_response = executor.submit(
+                                lambda: asyncio.run(
+                                    predict_extra_items(result_data)
+                                )
+                            ).result()
+                    else:
+                        pred_response = loop.run_until_complete(
+                            predict_extra_items(result_data)
+                        )
+                    # 解析预测结果（使用 parse_json 处理 markdown 围栏等）
+                    from .json_validator import parse_json
+                    pred_data, parse_err = parse_json(pred_response)
+                    if pred_data is not None:
+                        # 将预测结果存入 risks_json 中，供后续读取
+                        # 使用 copy 确保 SQLAlchemy 能检测到 JSON column 变更
+                        result_data_copy = dict(result_data)
+                        result_data_copy["extra_item_prediction"] = pred_data
+                        doc_analysis.risks_json = result_data_copy
+                        logger.info(
+                            "[AnalysisEngine] 增项预测完成: items=%d, predicted_total=%s",
+                            len(pred_data.get("predicted_items", [])),
+                            pred_data.get("predicted_actual_total", "N/A"),
+                        )
+                    else:
+                        logger.warning(
+                            "[AnalysisEngine] 增项预测 JSON 解析失败: %s",
+                            parse_err,
+                        )
+                except Exception as pred_err:
+                    logger.warning(
+                        "[AnalysisEngine] 增项预测失败（不影响主流程）: %s",
+                        str(pred_err),
+                    )
+            else:
+                logger.info(
+                    "[AnalysisEngine] 文档类型为 %s，跳过增项预测",
+                    classification.doc_type,
+                )
         else:
             doc_analysis.error_message = error_msg or "JSON 校验失败"
             doc_analysis.status = "failed"

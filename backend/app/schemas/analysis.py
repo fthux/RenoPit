@@ -78,6 +78,7 @@ class DocumentAnalysisResponse(BaseModel):
     risks_count: int = 0
     risks: List[DocumentRisk] = Field(default_factory=list)
     classifications: Optional[Dict[str, Any]] = None
+    extra_item_prediction: Optional[Dict[str, Any]] = None
     error_message: Optional[str] = None
     completed_at: Optional[datetime] = None
     created_at: datetime
@@ -89,6 +90,25 @@ class DocumentAnalysisListResponse(BaseModel):
     """文档分析列表响应"""
     items: List[DocumentAnalysisResponse] = Field(default_factory=list)
     total: int = 0
+
+
+class PredictedItem(BaseModel):
+    """增项预测中的单个预测项"""
+    name: str = Field(description="预测增项名称")
+    probability: str = Field(description="发生概率，如 '极高 (95%)'")
+    estimated_amount: List[float] = Field(description="估算金额范围，如 [8000, 15000]")
+    trigger_phase: str = Field(description="触发阶段，如 '水电阶段'")
+    reason: str = Field(description="预测理由，基于报价单分析结果")
+    prevention: str = Field(description="预防建议")
+
+
+class ExtraItemPrediction(BaseModel):
+    """增项预测与总花费估算"""
+    quoted_total: float = Field(description="报价单表面总价")
+    predicted_actual_total: float = Field(description="预测实际总花费")
+    confidence_range: List[float] = Field(description="置信区间，如 [160000, 190000]")
+    risk_level: str = Field(description="风险等级: low / medium / high")
+    predicted_items: List[PredictedItem] = Field(default_factory=list, description="预测增项列表，按概率从高到低排列")
 
 
 class AnalysisFrontendResponse(BaseModel):

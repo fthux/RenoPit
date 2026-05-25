@@ -645,12 +645,20 @@ def _infer_category(problem: dict) -> str:
     return "其他"
 
 
-def _serialize_document_analyses(document_analyses, project_id: str) -> list:
-    """将 DocumentAnalysis 模型列表序列化为前端/PDF 共用的格式"""
-    results = []
+def _serialize_document_analyses(document_analyses, project_id: str) -> dict:
+    """将 DocumentAnalysis 模型列表序列化为前端/PDF 共用的对象格式。
+
+    以 project_file_id 为 key，确保同一文件的多次分析只保留最新一条。
+    """
+    results: dict[str, dict] = {}
     for da in document_analyses:
-        # 序列化 risks 列表
+        # 同一文件只保留第一条（已按 completed_at desc 排序，即最新）
+        key = da.project_file_id
+        if key in results:
+            continue
+
         risks = []
+        extra_item_prediction = None
         if da.risks_json and isinstance(da.risks_json, dict):
             for r in da.risks_json.get("risks", []) or []:
                 if isinstance(r, dict):
@@ -663,8 +671,9 @@ def _serialize_document_analyses(document_analyses, project_id: str) -> list:
                         "financial_consequence": r.get("financial_consequence", ""),
                         "suggested_fix": r.get("suggested_fix", ""),
                     })
+            extra_item_prediction = da.risks_json.get("extra_item_prediction")
 
-        results.append({
+        results[key] = {
             "id": da.id,
             "project_id": da.project_id,
             "project_file_id": da.project_file_id,
@@ -675,10 +684,11 @@ def _serialize_document_analyses(document_analyses, project_id: str) -> list:
             "total_estimated_risk": da.total_estimated_risk,
             "risks_count": da.risks_count,
             "risks": risks,
+            "extra_item_prediction": extra_item_prediction,
             "error_message": da.error_message,
             "completed_at": da.completed_at.isoformat() if da.completed_at else None,
             "created_at": da.created_at.isoformat() if da.created_at else None,
-        })
+        }
     return results
 
 
@@ -893,7 +903,7 @@ async def download_report_pdf(project_id: str, request: Request, db: Session = D
         images_data = images_resp.json()
 
     # 文档分析数据已包含在 result_data["document_analyses"] 中
-    document_analyses_data = result_data.get("document_analyses", [])
+    document_analyses_data = result_data.get("document_analyses", {})
 
     # 生成 PDF
     try:
@@ -1095,6 +1105,10 @@ def _doc_analysis_to_response(a: DocumentAnalysis) -> DocumentAnalysisResponse:
                     financial_consequence=r.get("financial_consequence", ""),
                     suggested_fix=r.get("suggested_fix", ""),
                 ))
+    extra_item_prediction = None
+    if a.risks_json and isinstance(a.risks_json, dict):
+        extra_item_prediction = a.risks_json.get("extra_item_prediction")
+
     return DocumentAnalysisResponse(
         id=a.id,
         project_id=a.project_id,
@@ -1107,6 +1121,7 @@ def _doc_analysis_to_response(a: DocumentAnalysis) -> DocumentAnalysisResponse:
         risks_count=a.risks_count,
         risks=risks,
         classifications=a.classifications_json,
+        extra_item_prediction=extra_item_prediction,
         error_message=a.error_message,
         completed_at=a.completed_at,
         created_at=a.created_at,

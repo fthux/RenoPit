@@ -134,7 +134,7 @@ def _severity_label(sev):
     return {"critical": "严重", "high": "高", "medium": "中", "low": "低"}.get(sev, sev)
 
 
-def _build_content(project_id: str, analysis_data: dict, images_data: list, document_analyses_data: Optional[list] = None) -> list:
+def _build_content(project_id: str, analysis_data: dict, images_data: list, document_analyses_data: Optional[dict] = None) -> list:
     """Build the document content (list of flowables)."""
     S = _styles()
     story = []
@@ -229,32 +229,6 @@ def _build_content(project_id: str, analysis_data: dict, images_data: list, docu
                     story.append(bar)
                     story.append(Spacer(1, 4 * mm))
 
-    # ── Document Risk Analysis Section ────────────────────────────
-    if document_analyses_data:
-        story.append(Paragraph("合同 / 报价单风险分析", S["h1"]))
-        story.append(Paragraph("以下为 AI 对上传的合同、报价单等文档进行的风险检测分析：", S["body"]))
-        story.append(Spacer(1, 4 * mm))
-
-        # Sort: latest first
-        sorted_docs = sorted(document_analyses_data, key=lambda x: x.get("created_at", ""), reverse=True)
-        for doc in sorted_docs:
-            story = _build_document_risk_section(story, doc, S)
-            story.append(Spacer(1, 4 * mm))
-
-        story.append(PageBreak())
-
-
-    # ── Design Images Section ──────────────────────────────────
-    if images_data:
-        story.append(Paragraph("设计图纸", S["h1"]))
-        story.append(Paragraph("以下为项目上传的设计图纸及 AI 检测标注：", S["body"]))
-        story.append(Spacer(1, 4 * mm))
-        for idx, img_info in enumerate(images_data):
-            story.append(_build_image_section(img_info, analysis_data, idx))
-            story.append(Spacer(1, 6 * mm))
-
-        story.append(PageBreak())
-
     # ── Pitfalls Section ───────────────────────────────────────
     pitfalls = analysis_data.get("pitfalls", [])
     if not pitfalls:
@@ -281,6 +255,45 @@ def _build_content(project_id: str, analysis_data: dict, images_data: list, docu
     for item in pitfalls:
         story.append(_build_pitfall_card(item, S))
         story.append(Spacer(1, 4 * mm))
+
+    story.append(PageBreak())
+
+    # ── Document Risk Analysis Section ────────────────────────────
+    if document_analyses_data:
+        story.append(Paragraph("合同 / 报价单风险分析", S["h1"]))
+        story.append(Paragraph("以下为 AI 对上传的合同、报价单等文档进行的风险检测分析：", S["body"]))
+        story.append(Spacer(1, 4 * mm))
+
+        # Sort: latest first by created_at
+        sorted_docs = sorted(document_analyses_data.values(), key=lambda x: x.get("created_at", ""), reverse=True)
+        for doc in sorted_docs:
+            story = _build_document_risk_section(story, doc, S)
+            story.append(Spacer(1, 4 * mm))
+
+        # Extra Item Prediction Section
+        for doc in sorted_docs:
+            extra_prediction = doc.get("extra_item_prediction")
+            if extra_prediction:
+                story.append(Paragraph("增项预测与总花费估算", S["h1"]))
+                story.append(Paragraph("以下为 AI 基于报价单分析结果预测的施工过程中可能追加的增项：", S["body"]))
+                story.append(Spacer(1, 4 * mm))
+                story = _build_extra_prediction_section(story, extra_prediction, S)
+                story.append(Spacer(1, 4 * mm))
+                break  # Only render one prediction section
+
+        story.append(PageBreak())
+
+
+    # ── Design Images Section ──────────────────────────────────
+    if images_data:
+        story.append(Paragraph("设计图纸", S["h1"]))
+        story.append(Paragraph("以下为项目上传的设计图纸及 AI 检测标注：", S["body"]))
+        story.append(Spacer(1, 4 * mm))
+        for idx, img_info in enumerate(images_data):
+            story.append(_build_image_section(img_info, analysis_data, idx))
+            story.append(Spacer(1, 6 * mm))
+
+        story.append(PageBreak())
 
     return story
 
@@ -664,6 +677,143 @@ def _build_document_risk_section(story: list, doc: dict, S: dict) -> list:
     return story
 
 
+def _build_extra_prediction_section(story: list, prediction: dict, S: dict) -> list:
+    """Build a section for extra item prediction in the PDF.
+
+    The `prediction` dict has the structure from ExtraItemPrediction:
+    {quoted_total, predicted_actual_total, confidence_range, risk_level, predicted_items}
+    """
+    quoted_total = prediction.get("quoted_total", 0)
+    predicted_total = prediction.get("predicted_actual_total", 0)
+    confidence_range = prediction.get("confidence_range", [0, 0])
+    risk_level = prediction.get("risk_level", "medium")
+    predicted_items = prediction.get("predicted_items", []) or []
+
+    # Risk level colors
+    risk_colors = {
+        "high": _COLORS["critical"],
+        "medium": _COLORS["medium"],
+        "low": _COLORS["low"],
+    }
+    risk_labels = {"high": "高风险", "medium": "中风险", "low": "低风险"}
+    risk_color = risk_colors.get(risk_level, _COLORS["text_muted"])
+    risk_label = risk_labels.get(risk_level, risk_level)
+
+    # Summary header
+    increase = predicted_total - quoted_total
+    increase_pct = (increase / quoted_total * 100) if quoted_total > 0 else 0
+    summary_text = (
+        f'报价单表面总价：<b>{_sanitize_html(f"{quoted_total:,.0f}")} 元</b> | '
+        f'预测实际总花费：<b><font color="{risk_color}">{_sanitize_html(f"{predicted_total:,.0f}")} 元</font></b> | '
+        f'预估增加：<b><font color="{risk_color}">+{_sanitize_html(f"{increase:,.0f}")} 元 ({increase_pct:.0f}%)</font></b> | '
+        f'置信区间：{_sanitize_html(f"{confidence_range[0]:,.0f}")} ~ {_sanitize_html(f"{confidence_range[1]:,.0f}")} 元'
+    )
+    story.append(Paragraph(summary_text, S["body"]))
+    story.append(Spacer(1, 2 * mm))
+
+    # Risk level badge
+    story.append(Paragraph(
+        f'<font color="{risk_color}"><b>总体风险等级：{risk_label}</b></font>',
+        S["body_small"],
+    ))
+    story.append(Spacer(1, 4 * mm))
+
+    if not predicted_items:
+        story.append(Paragraph(
+            f'<font color="{_COLORS["text_muted"]}">未检测到明显的增项风险项</font>',
+            S["body_small"],
+        ))
+        return story
+
+    # Predicted items list
+    story.append(Paragraph(
+        f'预测增项共 <b>{len(predicted_items)}</b> 项，按发生概率从高到低排列：',
+        S["body_small"],
+    ))
+    story.append(Spacer(1, 2 * mm))
+
+    # Probability color mapping
+    prob_colors = {
+        "极高": _COLORS["critical"],
+        "高": _COLORS["high"],
+        "中": _COLORS["medium"],
+        "低": _COLORS["low"],
+    }
+
+    for item in predicted_items:
+        name = item.get("name", "")
+        probability = item.get("probability", "")
+        estimated_amount = item.get("estimated_amount", [0, 0])
+        trigger_phase = item.get("trigger_phase", "")
+        reason = item.get("reason", "")
+        prevention = item.get("prevention", "")
+
+        # Determine color based on probability text
+        prob_color = _COLORS["text"]
+        for keyword, color in prob_colors.items():
+            if keyword in probability:
+                prob_color = color
+                break
+
+        card_data = []
+
+        # Title row
+        card_data.append([
+            Paragraph(
+                f'<font color="{_COLORS["text"]}"><b>{_sanitize_html(name)}</b></font>',
+                S["body_small"],
+            )
+        ])
+
+        # Meta row: probability + amount + phase
+        meta_parts = [
+            f'<font color="{prob_color}"><b>概率：{_sanitize_html(probability)}</b></font>',
+            f'<font color="{_COLORS["text"]}">预估金额：{_sanitize_html(f"{estimated_amount[0]:,.0f}")} ~ {_sanitize_html(f"{estimated_amount[1]:,.0f}")} 元</font>',
+        ]
+        if trigger_phase:
+            meta_parts.append(
+                f'<font color="{_COLORS["text_muted"]}">触发阶段：{_sanitize_html(trigger_phase)}</font>'
+            )
+        card_data.append([
+            Paragraph(" | ".join(meta_parts), S["body_small"])
+        ])
+
+        # Reason
+        if reason:
+            card_data.append([
+                Paragraph(
+                    f'<font color="{_COLORS["text_muted"]}"><b>预测理由：</b></font>'
+                    f'<font color="{_COLORS["text"]}">{_sanitize_html(reason)}</font>',
+                    S["body_small"],
+                )
+            ])
+
+        # Prevention
+        if prevention:
+            card_data.append([
+                Paragraph(
+                    f'<font color="{_COLORS["accent"]}"><b>✓ 预防建议：</b></font>'
+                    f'<font color="{_COLORS["text"]}">{_sanitize_html(prevention)}</font>',
+                    S["body_small"],
+                )
+            ])
+
+        card = Table(card_data, colWidths=[165 * mm])
+        card.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor(_COLORS["bg_light"])),
+            ("BOX", (0, 0), (-1, -1), 0.5, colors.HexColor(prob_color)),
+            ("TOPPADDING", (0, 0), (-1, -1), 6),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+            ("LEFTPADDING", (0, 0), (-1, -1), 10),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 10),
+            ("LINEBELOW", (0, 0), (-1, 0), 0.5, colors.HexColor(_COLORS["border"])),
+        ]))
+        story.append(card)
+        story.append(Spacer(1, 2 * mm))
+
+    return story
+
+
 def _sanitize_html(text: str) -> str:
     """Escape HTML special characters to prevent ReportLab XML parsing errors."""
     if not isinstance(text, str):
@@ -715,7 +865,7 @@ def generate_pdf(
     project_id: str,
     result_data: dict,
     images_data: list,
-    document_analyses_data: Optional[list] = None,
+    document_analyses_data: Optional[dict] = None,
 ) -> Optional[bytes]:
     """Generate a PDF report for the given project.
 
