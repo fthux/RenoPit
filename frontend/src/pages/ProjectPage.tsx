@@ -63,6 +63,7 @@ export default function ProjectPage() {
       if (cancelled) return
       if (p) {
         setProject(p)
+        document.title = `${p.name} - 装闭`
         if (p.status === 'analyzing') {
           es = new EventSource(`${API}/projects/${projectId}/analyze/stream`)
           eventSourceRef.current = es
@@ -416,11 +417,14 @@ export default function ProjectPage() {
 
       {/* Action Bar */}
       <div className="bg-white rounded-2xl border border-slate-200 p-5 mb-8 flex flex-wrap items-center gap-3 shadow-sm">
-        <label className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-medium cursor-pointer transition-all ${uploading || isAnalyzing ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'bg-slate-100 text-slate-700 hover:bg-slate-200 hover:scale-[1.02] active:scale-[0.98]'}`}>
-          <Upload className="w-4 h-4" />
-          {uploading ? '上传中...' : isAnalyzing ? '分析中...' : '上传文件'}
-          <input type="file" multiple accept=".pdf,.png,.jpg,.jpeg,.webp,.txt,.docx,.md" onChange={handleFileUpload} disabled={uploading || isAnalyzing} className="hidden" />
-        </label>
+        <div className="flex flex-col gap-1">
+          <label className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-medium cursor-pointer transition-all ${uploading || isAnalyzing ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'bg-slate-100 text-slate-700 hover:bg-slate-200 hover:scale-[1.02] active:scale-[0.98]'}`}>
+            <Upload className="w-4 h-4" />
+            {uploading ? '上传中...' : isAnalyzing ? '分析中...' : '上传文件'}
+            <input type="file" multiple accept=".pdf,.png,.jpg,.jpeg,.webp,.txt,.docx,.md" onChange={handleFileUpload} disabled={uploading || isAnalyzing} className="hidden" />
+          </label>
+          <span className="text-xs text-amber-500 px-1">PDF 中的图片内容暂不支持 AI 视觉分析</span>
+        </div>
 
         {isAnalyzing ? (
           <button onClick={stopAnalysis} disabled={stopping}

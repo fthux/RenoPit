@@ -1,10 +1,14 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Upload, Loader2, Trash2, FileText, Image as ImageIcon } from 'lucide-react'
 
 const API = '/api'
 
 export default function CreateProjectPage() {
+  useEffect(() => {
+    document.title = '新建项目 - 装闭'
+  }, [])
+
   const navigate = useNavigate()
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
@@ -122,6 +126,7 @@ export default function CreateProjectPage() {
                   {selectedFiles.length > 0 ? `已选择 ${selectedFiles.length} 个文件` : '点击选择文件或拖拽到此处'}
                 </p>
                 <p className="text-xs mt-1 text-slate-400">JPG / PNG / WEBP 图片 · PDF / DOCX 文档 · TXT / MD 文本</p>
+                <p className="text-xs mt-1.5 text-amber-500">⚠ PDF 中的图片内容暂不支持 AI 视觉分析，建议直接上传图片格式</p>
               </div>
               <input
                 type="file"

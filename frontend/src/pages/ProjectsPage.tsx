@@ -8,6 +8,10 @@ const API = '/api'
 const PAGE_SIZE = 8
 
 export default function ProjectsPage() {
+  useEffect(() => {
+    document.title = '我的项目 - 装闭'
+  }, [])
+
   const [projects, setProjects] = useState<Project[]>([])
   const [loading, setLoading] = useState(true)
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null)

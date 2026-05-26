@@ -56,6 +56,10 @@ export default function AnalysisPage() {
     finally { setLoading(false) }
   }, [projectId])
 
+  useEffect(() => {
+    document.title = '分析结果 - 装闭'
+  }, [])
+
   useEffect(() => { fetchAnalysis() }, [fetchAnalysis])
 
   // IntersectionObserver for active section highlighting
