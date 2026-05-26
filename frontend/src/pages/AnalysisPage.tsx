@@ -1,6 +1,6 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useParams, Link } from 'react-router-dom'
-import { ArrowLeft, Loader2, AlertTriangle, Zap, AlertCircle, Info, Download, ChevronRight, Shield, ShieldAlert, ShieldCheck, FileText, DollarSign, FileSignature, PlusCircle } from 'lucide-react'
+import { ArrowLeft, Loader2, AlertTriangle, Zap, AlertCircle, Info, Download, ChevronRight, Shield, ShieldCheck, FileText, DollarSign, FileSignature, PlusCircle, ScrollText, BarChart3, Award, ClipboardList, TrendingUp } from 'lucide-react'
 import type { AnalysisResult, PitfallItem, PitfallSeverity } from '../types'
 import ExtraPredictionPanel from '../components/ExtraPredictionPanel'
 
@@ -19,6 +19,9 @@ export default function AnalysisPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [downloading, setDownloading] = useState(false)
+  const [activeSection, setActiveSection] = useState('')
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
+  const observerRef = useRef<IntersectionObserver | null>(null)
 
   const handleDownloadPdf = useCallback(async () => {
     if (!projectId) return
@@ -54,6 +57,61 @@ export default function AnalysisPage() {
   }, [projectId])
 
   useEffect(() => { fetchAnalysis() }, [fetchAnalysis])
+
+  // IntersectionObserver for active section highlighting
+  useEffect(() => {
+    // Compute section IDs based on available data
+    if (!result) return
+    const docs = result.document_analyses
+    const hasDocs = docs && Object.keys(docs).length > 0
+    const hasExtra = hasDocs && Object.values(docs).some((doc: any) => doc.extra_item_prediction)
+    const sectionIds = [
+      'section-summary',
+      'section-pitfalls',
+      'section-score',
+      'section-details',
+      ...(hasDocs ? ['section-contract'] : []),
+      ...(hasExtra ? ['section-extra'] : []),
+    ]
+    const entriesMap = new Map<string, number>()
+
+    observerRef.current = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          entriesMap.set(entry.target.id, entry.intersectionRatio)
+        })
+
+        // Find the section with the highest visible ratio
+        let maxRatio = 0
+        let maxId = ''
+        for (const id of sectionIds) {
+          const ratio = entriesMap.get(id) || 0
+          if (ratio > maxRatio) {
+            maxRatio = ratio
+            maxId = id
+          }
+        }
+        if (maxId) {
+          setActiveSection((prev) => prev !== maxId ? maxId : prev)
+        }
+      },
+      { threshold: [0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0], rootMargin: '-80px 0px -40% 0px' }
+    )
+
+    // Observe only existing section elements
+    sectionIds.forEach((id) => {
+      const el = document.getElementById(id)
+      if (el && observerRef.current) {
+        observerRef.current.observe(el)
+      }
+    })
+
+    return () => {
+      if (observerRef.current) {
+        observerRef.current.disconnect()
+      }
+    }
+  }, [result])
 
   if (loading) {
     return <div className="flex items-center justify-center min-h-[70vh]"><Loader2 className="w-8 h-8 animate-spin text-slate-300" /></div>
@@ -114,10 +172,32 @@ export default function AnalysisPage() {
 
   const scoreLevel = getScoreLevel(summary.score)
 
+  const hasDocumentAnalyses = document_analyses && Object.keys(document_analyses).length > 0
+  const hasExtraPrediction = hasDocumentAnalyses && Object.values(document_analyses).some((doc: any) => doc.extra_item_prediction)
+
+  const navItems = [
+    { id: 'section-summary', Icon: ScrollText, label: '总体评价', color: 'text-teal-500' },
+    { id: 'section-pitfalls', Icon: BarChart3, label: '陷阱数', color: 'text-blue-500' },
+    { id: 'section-score', Icon: Award, label: '综合评分', color: 'text-amber-500' },
+    { id: 'section-details', Icon: ClipboardList, label: '问题详情', color: 'text-slate-500' },
+    ...(hasDocumentAnalyses ? [{ id: 'section-contract', Icon: FileText, label: '合同/报价单', color: 'text-violet-500' }] : []),
+    ...(hasExtraPrediction ? [{ id: 'section-extra', Icon: TrendingUp, label: '增项预测', color: 'text-purple-500' }] : []),
+  ]
+
+  const HEADER_OFFSET = 100 // offset in px to account for fixed header (breadcrumb + title + metadata + mobile nav)
+
+  const scrollToSection = (id: string) => {
+    const el = document.getElementById(id)
+    if (el) {
+      const top = el.getBoundingClientRect().top + window.scrollY - HEADER_OFFSET
+      window.scrollTo({ behavior: 'smooth', top })
+    }
+  }
+
   return (
     <div className="max-w-6xl mx-auto px-4 py-8">
       {/* Breadcrumb */}
-      <div className="flex items-center gap-2 mb-8">
+      <div className="flex items-center gap-2 mb-6">
         <Link to={`/project/${projectId}`} className="text-slate-400 hover:text-slate-600 no-underline flex items-center gap-1 text-sm transition-colors">
           <ArrowLeft className="w-4 h-4" />
           项目详情
@@ -127,7 +207,7 @@ export default function AnalysisPage() {
       </div>
 
       {/* Header */}
-      <div className="flex items-center justify-between mb-8">
+      <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-3xl font-bold text-slate-800 tracking-tight">分析结果</h1>
           <p className="text-slate-500 text-sm mt-1.5">AI 检测到的装修陷阱总览</p>
@@ -140,7 +220,7 @@ export default function AnalysisPage() {
 
       {/* Analysis Metadata */}
       {(analysisId || projectId || analysisCreatedAt || analysisCompletedAt) && (
-        <div className="flex items-center gap-4 md:gap-6 flex-wrap mb-4 px-1">
+        <div className="flex items-center gap-4 md:gap-6 flex-wrap mb-6 px-1">
           {analysisId && (
             <div className="flex items-center gap-1.5">
               <span className="text-xs text-slate-400">分析报告编号</span>
@@ -168,110 +248,249 @@ export default function AnalysisPage() {
         </div>
       )}
 
-      {/* Summary text */}
-      {summary.summary_text && (
-        <div className="bg-gradient-to-r from-blue-50 to-indigo-50/50 rounded-2xl border border-blue-100/80 px-5 py-4 mb-6 shadow-sm">
-          <div className="flex items-start gap-3">
-            <div className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center flex-shrink-0 mt-0.5">
-              <ShieldCheck className="w-4 h-4 text-blue-600" />
-            </div>
-            <p className="text-sm text-slate-700 leading-relaxed">{summary.summary_text}</p>
-          </div>
-        </div>
-      )}
-
-      {/* Stats Bar */}
-      <div className="bg-white rounded-2xl border border-slate-200 px-5 py-4 mb-8 shadow-sm">
-        <div className="flex items-center gap-4 md:gap-6 flex-wrap">
-          <div className="flex items-center gap-2">
-            <Shield className="w-4 h-4 text-slate-400" />
-            <span className="text-sm text-slate-500">陷阱总数</span>
-            <span className="text-xl font-bold text-slate-800">{summary.total_pitfalls}</span>
-          </div>
-          <div className="hidden md:block w-px h-6 bg-slate-200" />
-          {(['critical', 'high', 'medium', 'low'] as PitfallSeverity[]).map((s, idx) => {
-            const cfg = severityConfig[s]
-            const Icon = cfg.icon
-            const count = summary[`${s}_count` as keyof typeof summary] as number
+      {/* Mobile: Horizontal scrollable nav */}
+      <nav className="lg:hidden -mx-4 px-4 mb-6 overflow-x-auto scrollbar-hide sticky top-0 z-10 bg-white/95 backdrop-blur-sm border-b border-slate-100 py-2.5">
+        <div className="flex items-center gap-1 min-w-max">
+          {navItems.map((item) => {
+            const isActive = activeSection === item.id
+            const Icon = item.Icon
             return (
-              <div key={s} className="flex items-center gap-1.5">
-                <Icon className={`w-3.5 h-3.5 ${cfg.color}`} />
-                <span className="text-xs text-slate-500">{cfg.label}</span>
-                <span className={`text-lg font-bold ${cfg.color}`}>{count}</span>
-                {idx < 3 && <span className="hidden md:inline text-slate-200 mx-0.5">/</span>}
-              </div>
+              <button
+                key={item.id}
+                onClick={() => scrollToSection(item.id)}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition-all duration-200 cursor-pointer ${isActive ? 'bg-slate-100 text-slate-800 shadow-sm' : 'text-slate-400 hover:text-slate-600 hover:bg-slate-50'
+                  }`}
+              >
+                <Icon className={`w-3.5 h-3.5 ${isActive ? item.color : 'text-slate-400'}`} />
+                {item.label}
+              </button>
             )
           })}
         </div>
-        {summary.total_pitfalls > 0 && (
-          <div className="mt-3 flex h-2 rounded-full overflow-hidden bg-slate-100">
-            {(['critical', 'high', 'medium', 'low'] as PitfallSeverity[]).map((s) => {
-              const count = summary[`${s}_count` as keyof typeof summary] as number
-              const pct = (count / summary.total_pitfalls) * 100
-              if (pct === 0) return null
-              const barColor = {
-                critical: 'bg-red-500', high: 'bg-orange-400', medium: 'bg-yellow-400', low: 'bg-blue-400',
-              }[s]
-              return <div key={s} className={`${barColor} h-full transition-all duration-700`} style={{ width: `${pct}%` }} />
+      </nav>
+
+      {/* Desktop: Flex layout with sticky sidebar */}
+      <div className={`flex ${sidebarCollapsed ? 'gap-4' : 'gap-8'}`}>
+        {/* Desktop sidebar nav */}
+        <nav className={`hidden lg:block flex-shrink-0 transition-all duration-300 ${sidebarCollapsed ? 'w-14' : 'w-36'}`}>
+          <div className={`sticky top-24 max-h-[calc(100vh-8rem)] overflow-y-auto ${sidebarCollapsed ? 'space-y-1' : 'space-y-0.5'}`}>
+            {/* Toggle button */}
+            <button
+              onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+              className={`w-full flex items-center justify-center px-2 py-2 rounded-xl text-xs font-medium transition-all duration-200 cursor-pointer text-slate-400 hover:text-slate-600 hover:bg-slate-50 mb-1 ${sidebarCollapsed ? '' : 'gap-2'}`}
+              title={sidebarCollapsed ? '展开侧栏' : '收起侧栏'}
+            >
+              <ChevronRight className={`w-4 h-4 transition-transform duration-300 ${sidebarCollapsed ? '' : 'rotate-180'}`} />
+              {!sidebarCollapsed && <span className="text-xs">收起</span>}
+            </button>
+            {navItems.map((item) => {
+              const isActive = activeSection === item.id
+              const Icon = item.Icon
+              return (
+                <button
+                  key={item.id}
+                  onClick={() => scrollToSection(item.id)}
+                  className={`w-full flex items-center ${sidebarCollapsed ? 'justify-center' : 'gap-2.5 px-3'} py-2 rounded-xl text-sm font-medium transition-all duration-200 cursor-pointer text-left ${isActive
+                    ? 'bg-slate-100 text-slate-800 shadow-sm'
+                    : 'text-slate-400 hover:text-slate-600 hover:bg-slate-50'
+                    }`}
+                  title={sidebarCollapsed ? item.label : undefined}
+                >
+                  <Icon className={`w-4 h-4 flex-shrink-0 transition-colors duration-200 ${isActive ? item.color : 'text-slate-400'
+                    }`} />
+                  {!sidebarCollapsed && <span className="truncate">{item.label}</span>}
+                  {/* Active indicator dot - only show when expanded */}
+                  {!sidebarCollapsed && isActive && <span className={`ml-auto w-1.5 h-1.5 rounded-full ${item.color.replace('text-', 'bg-')}`} />}
+                </button>
+              )
             })}
           </div>
-        )}
-      </div>
+        </nav>
 
-      {/* Score Card */}
-      <div className="bg-white rounded-2xl border border-slate-200 p-6 mb-8 shadow-sm">
-        <div className="flex items-center justify-between mb-2">
-          <div className="flex items-center gap-2">
-            <ShieldCheck className="w-5 h-5 text-slate-500" />
-            <h2 className="text-sm font-semibold text-slate-700">综合评分</h2>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className={`text-sm font-medium ${scoreLevel.color}`}>{scoreLevel.label}</span>
-            <span className={`text-4xl font-bold ${scoreLevel.color}`}>
-              {summary.score}
-              <span className="text-base font-normal text-slate-400"> / 100</span>
-            </span>
-          </div>
-        </div>
-        <div className="w-full h-3 bg-slate-100 rounded-full overflow-hidden mt-3 mb-3 shadow-inner">
-          <div className={`h-full rounded-full transition-all duration-1000 ${scoreLevel.bg} shadow-lg`} style={{ width: `${Math.max(summary.score, 2)}%` }} />
-        </div>
-        <p className="text-xs text-slate-400 mt-1">{scoreLevel.desc}</p>
-      </div>
-
-      {/* Pitfall List */}
-      <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
-        <div className="px-6 py-4 border-b border-slate-100 bg-gradient-to-r from-slate-50 to-white">
-          <div className="flex items-center gap-2">
-            <ShieldAlert className="w-4 h-4 text-slate-500" />
-            <h2 className="text-sm font-semibold text-slate-700">问题详情（{pitfalls.length}）</h2>
-          </div>
-        </div>
-        <div className="divide-y divide-slate-100">
-          {pitfalls.map((item) => (
-            <PitfallCard key={item.id} item={item} />
-          ))}
-        </div>
-      </div>
-
-      {/* Contract / Quotation Risk Analysis + Extra Prediction Section */}
-      {document_analyses && Object.keys(document_analyses).length > 0 && (
-        <div className="mt-8">
-          <div className="flex items-center gap-2 mb-4">
-            <FileText className="w-5 h-5 text-violet-500" />
-            <h2 className="text-lg font-semibold text-slate-800">合同 / 报价单风险分析</h2>
+        {/* Main content */}
+        <div className="flex-1 min-w-0">
+          {/* Section: 总体评价 */}
+          <div id="section-summary">
+            {/* Title: 总体评价 */}
+            <div className="flex items-center gap-2 mb-4">
+              <ScrollText className="w-5 h-5 text-teal-500" />
+              <h2 className="text-lg font-semibold text-slate-800">总体评价</h2>
+            </div>
+            {/* Summary text */}
+            {summary.summary_text && (
+              <div className="bg-gradient-to-r from-blue-50 to-indigo-50/50 rounded-2xl border border-blue-100/80 px-5 py-4 mb-8 shadow-sm">
+                <div className="flex items-start gap-3">
+                  <div className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center flex-shrink-0 mt-0.5">
+                    <ShieldCheck className="w-4 h-4 text-blue-600" />
+                  </div>
+                  <p className="text-sm text-slate-700 leading-relaxed">{summary.summary_text}</p>
+                </div>
+              </div>
+            )}
           </div>
 
-          {Object.values(document_analyses).map((doc) => (
-            <div key={doc.id}>
-              <DocRiskSection doc={doc} />
-              {doc.extra_item_prediction && (
-                <ExtraPredictionPanel prediction={doc.extra_item_prediction} />
+          {/* Section: 陷阱数 */}
+          <div id="section-pitfalls">
+            {/* Title: 陷阱数 */}
+            <div className="flex items-center gap-2 mb-4">
+              <BarChart3 className="w-5 h-5 text-blue-500" />
+              <h2 className="text-lg font-semibold text-slate-800">陷阱数</h2>
+            </div>
+            {/* Stats Bar */}
+            <div className="bg-white rounded-2xl border border-slate-200 px-5 py-4 mb-8 shadow-sm">
+              <div className="flex items-center gap-4 md:gap-6 flex-wrap">
+                <div className="flex items-center gap-2">
+                  <Shield className="w-4 h-4 text-slate-400" />
+                  <span className="text-sm text-slate-500">陷阱总数</span>
+                  <span className="text-xl font-bold text-slate-800">{summary.total_pitfalls}</span>
+                </div>
+                <div className="hidden md:block w-px h-6 bg-slate-200" />
+                {(['critical', 'high', 'medium', 'low'] as PitfallSeverity[]).map((s, idx) => {
+                  const cfg = severityConfig[s]
+                  const Icon = cfg.icon
+                  const count = summary[`${s}_count` as keyof typeof summary] as number
+                  return (
+                    <div key={s} className="flex items-center gap-1.5">
+                      <Icon className={`w-3.5 h-3.5 ${cfg.color}`} />
+                      <span className="text-xs text-slate-500">{cfg.label}</span>
+                      <span className={`text-lg font-bold ${cfg.color}`}>{count}</span>
+                      {idx < 3 && <span className="hidden md:inline text-slate-200 mx-0.5">/</span>}
+                    </div>
+                  )
+                })}
+              </div>
+              {summary.total_pitfalls > 0 && (
+                <div className="mt-3 flex h-2 rounded-full overflow-hidden bg-slate-100">
+                  {(['critical', 'high', 'medium', 'low'] as PitfallSeverity[]).map((s) => {
+                    const count = summary[`${s}_count` as keyof typeof summary] as number
+                    const pct = (count / summary.total_pitfalls) * 100
+                    if (pct === 0) return null
+                    const barColor = {
+                      critical: 'bg-red-500', high: 'bg-orange-400', medium: 'bg-yellow-400', low: 'bg-blue-400',
+                    }[s]
+                    return <div key={s} className={`${barColor} h-full transition-all duration-700`} style={{ width: `${pct}%` }} />
+                  })}
+                </div>
               )}
             </div>
-          ))}
+          </div>
+
+          {/* Section: 综合评分 */}
+          <div id="section-score">
+            {/* Title: 综合评分 */}
+            <div className="flex items-center gap-2 mb-4">
+              <Award className="w-5 h-5 text-amber-500" />
+              <h2 className="text-lg font-semibold text-slate-800">综合评分</h2>
+            </div>
+            {/* Score Card */}
+            <div className={`bg-white rounded-2xl border p-6 mb-8 shadow-sm overflow-hidden relative ${scoreLevel.color === 'text-green-600' ? 'border-green-200' : scoreLevel.color === 'text-yellow-600' ? 'border-yellow-200' : 'border-red-200'}`}>
+              {/* Decorative top accent bar */}
+              <div className={`absolute top-0 left-0 right-0 h-1 ${scoreLevel.bg}`} />
+              <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                {/* Left: Large Score */}
+                <div className="flex items-center gap-4">
+                  {/* Score ring */}
+                  <div className={`relative w-20 h-20 rounded-full flex items-center justify-center flex-shrink-0 ${scoreLevel.bg === 'bg-green-500' ? 'bg-green-50' : scoreLevel.bg === 'bg-yellow-500' ? 'bg-yellow-50' : 'bg-red-50'}`}>
+                    <span className={`text-3xl font-extrabold ${scoreLevel.color}`}>{summary.score}</span>
+                    <svg className="absolute inset-0 w-full h-full -rotate-90" viewBox="0 0 80 80">
+                      <circle cx="40" cy="40" r="34" fill="none" stroke="currentColor" strokeWidth="4" className="text-slate-100" />
+                      <circle
+                        cx="40" cy="40" r="34" fill="none" strokeWidth="4"
+                        className={scoreLevel.bg}
+                        strokeLinecap="round"
+                        strokeDasharray={`${2 * Math.PI * 34}`}
+                        strokeDashoffset={`${2 * Math.PI * 34 * (1 - summary.score / 100)}`}
+                        style={{ transition: 'stroke-dashoffset 1s ease-in-out' }}
+                      />
+                    </svg>
+                  </div>
+                  <div>
+                    <div className={`text-lg font-bold ${scoreLevel.color}`}>{scoreLevel.label}</div>
+                    <div className="text-xs text-slate-400 mt-0.5">{scoreLevel.desc}</div>
+                  </div>
+                </div>
+                {/* Right: Summary metrics */}
+                <div className="flex items-center gap-4 md:gap-6 flex-shrink-0">
+                  <div className="text-center px-4 py-2 rounded-xl bg-slate-50 border border-slate-100">
+                    <div className="text-xs text-slate-400 mb-0.5">最高</div>
+                    <div className="text-sm font-semibold text-slate-700">100</div>
+                  </div>
+                  <div className="text-center px-4 py-2 rounded-xl bg-slate-50 border border-slate-100">
+                    <div className="text-xs text-slate-400 mb-0.5">及格线</div>
+                    <div className="text-sm font-semibold text-slate-700">60</div>
+                  </div>
+                  <div className="text-center px-4 py-2 rounded-xl bg-slate-50 border border-slate-100">
+                    <div className="text-xs text-slate-400 mb-0.5">当前</div>
+                    <div className={`text-sm font-semibold ${scoreLevel.color}`}>{summary.score}</div>
+                  </div>
+                </div>
+              </div>
+              {/* Progress bar */}
+              <div className="mt-5">
+                <div className="flex items-center justify-between text-xs text-slate-400 mb-1.5">
+                  <span>0</span>
+                  <span>100</span>
+                </div>
+                <div className="w-full h-3 bg-slate-100 rounded-full overflow-hidden shadow-inner">
+                  <div className={`h-full rounded-full transition-all duration-1000 ${scoreLevel.bg} shadow-lg`} style={{ width: `${Math.max(summary.score, 2)}%` }} />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Section: 问题详情 */}
+          <div id="section-details">
+            {/* Title: 问题详情 */}
+            <div className="flex items-center gap-2 mb-4">
+              <ClipboardList className="w-5 h-5 text-slate-500" />
+              <h2 className="text-lg font-semibold text-slate-800">问题详情</h2>
+              <span className="ml-2 px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-500 text-xs font-medium">{pitfalls.length} 项</span>
+            </div>
+            {/* Pitfall List */}
+            <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm mb-8">
+              <div className="divide-y divide-slate-100">
+                {pitfalls.map((item) => (
+                  <PitfallCard key={item.id} item={item} />
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* Section: 合同/报价单风险分析 + 增项预测 */}
+          {document_analyses && Object.keys(document_analyses).length > 0 && (
+            <div>
+              {/* Contract risk section */}
+              <div id="section-contract">
+                <div className="flex items-center gap-2 mb-4">
+                  <FileText className="w-5 h-5 text-violet-500" />
+                  <h2 className="text-lg font-semibold text-slate-800">合同 / 报价单风险分析</h2>
+                </div>
+                {Object.values(document_analyses).map((doc) => (
+                  <div key={doc.id}>
+                    <DocRiskSection doc={doc} />
+                    {doc.extra_item_prediction && (
+                      <div id="section-extra">
+                        <div className="flex items-center gap-2 mb-4">
+                          <TrendingUp className="w-5 h-5 text-purple-500" />
+                          <h2 className="text-lg font-semibold text-slate-800">增项预测与总花费估算</h2>
+                        </div>
+                        <ExtraPredictionPanel prediction={doc.extra_item_prediction} />
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Fallback for extra prediction if no document_analyses */}
+          {(!document_analyses || Object.keys(document_analyses).length === 0) && result && 'extra_item_prediction' in result && (
+            <div id="section-extra">
+              {/* Extra prediction fallback placeholder if needed */}
+            </div>
+          )}
         </div>
-      )}
+      </div>
     </div>
   )
 }

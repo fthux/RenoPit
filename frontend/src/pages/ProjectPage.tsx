@@ -419,7 +419,7 @@ export default function ProjectPage() {
         <label className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-medium cursor-pointer transition-all ${uploading || isAnalyzing ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'bg-slate-100 text-slate-700 hover:bg-slate-200 hover:scale-[1.02] active:scale-[0.98]'}`}>
           <Upload className="w-4 h-4" />
           {uploading ? '上传中...' : isAnalyzing ? '分析中...' : '上传文件'}
-          <input type="file" multiple accept=".dxf,.dwg,.pdf,.png,.jpg,.jpeg,.webp" onChange={handleFileUpload} disabled={uploading || isAnalyzing} className="hidden" />
+          <input type="file" multiple accept=".pdf,.png,.jpg,.jpeg,.webp,.txt,.docx,.md" onChange={handleFileUpload} disabled={uploading || isAnalyzing} className="hidden" />
         </label>
 
         {isAnalyzing ? (
@@ -500,11 +500,11 @@ export default function ProjectPage() {
                 onChange={(e) => setEditValue(e.target.value)}
                 onKeyDown={(e) => { if ((e.key === 'Enter' && e.metaKey) || (e.key === 'Enter' && e.ctrlKey)) saveEditing(); if (e.key === 'Escape') cancelEditing() }}
                 className="text-sm text-slate-600 bg-white border-2 border-blue-400 rounded-xl px-3 py-2 outline-none focus:border-blue-500 w-full resize-none"
-                rows={4}
+                rows={6}
                 autoFocus
                 disabled={saving}
-                maxLength={2000}
-                placeholder="补充说明（最多2000字）"
+                maxLength={5000}
+                placeholder="任何你需要补充的都可以写在这里（最多5000字）"
               />
               <div className="flex items-center gap-1">
                 <button onClick={saveEditing} disabled={saving} className="p-2 rounded-lg bg-blue-500 text-white hover:bg-blue-600 transition-colors disabled:opacity-50" title="保存">
