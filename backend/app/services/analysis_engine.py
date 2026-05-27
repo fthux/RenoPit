@@ -276,6 +276,211 @@ def run_analysis_sync(project_id: str) -> dict:
         db.close()
 
 
+def run_cross_check_sync(project_id: str) -> dict:
+    """同步执行多文档交叉核查
+
+    当项目中有 ≥ 2 份文本文件时，自动触发交叉核查：
+    1. 查询所有已完成的 DocumentAnalysis 记录
+    2. 对每份文档提取结构化摘要（如果已有 risks_json 则复用）
+    3. 检测比对模式（BILL_vs_CONTRACT / SUPERVISION_TRACKING / DESIGN_vs_BILL）
+    4. 调用 LLM 交叉比对
+    5. 将结果存储到 Analysis.raw_result_json.cross_document_checks
+
+    Args:
+        project_id: 项目 ID
+
+    Returns:
+        结果字典：{"status": "completed" | "failed", ...}
+    """
+    from ..models.document_analysis import DocumentAnalysis
+    from .cross_checker import detect_check_mode
+    from .llm_service import cross_check_documents, extract_document_summary
+    from .json_validator import parse_json
+    from .document_classifier import classify_document
+
+    db: Session = SessionLocal()
+    result_data: Optional[dict] = None
+
+    try:
+        # Step 1: 查询所有已完成的文档分析记录
+        doc_analyses = db.query(DocumentAnalysis).filter(
+            DocumentAnalysis.project_id == project_id,
+            DocumentAnalysis.status == "completed",
+            DocumentAnalysis.doc_type.in_(["quotation", "contract"]),
+        ).all()
+
+        if len(doc_analyses) < 2:
+            logger.info(
+                "[CrossCheck] 项目 %s 已完成文档分析不足 2 份（实际 %d 份），跳过交叉核查",
+                project_id, len(doc_analyses),
+            )
+            return {
+                "status": "skipped",
+                "project_id": project_id,
+                "reason": f"已完成文档分析不足 2 份（实际 {len(doc_analyses)} 份）",
+            }
+
+        logger.info(
+            "[CrossCheck] 开始多文档交叉核查: project=%s, doc_count=%d",
+            project_id, len(doc_analyses),
+        )
+
+        # Step 2: 为每份文档准备结构化摘要
+        doc_summaries: list[dict] = []
+
+        for doc_analysis in doc_analyses:
+            # 获取对应的 ProjectFile 以得到文件名和原始文本
+            from ..models.project_file import ProjectFile
+            project_file = db.query(ProjectFile).filter(
+                ProjectFile.id == doc_analysis.project_file_id,
+            ).first()
+
+            filename = project_file.original_filename if project_file else f"文件{doc_analysis.id}"
+            doc_type = doc_analysis.doc_type
+
+            # 如果已有 risks_json，直接从中构建摘要（避免额外的 LLM 调用）
+            risks_json = doc_analysis.risks_json or {}
+            if risks_json:
+                # 从已有的分析结果构建摘要
+                summary = {
+                    "doc_type": doc_type,
+                    "source_file": filename,
+                    "_extraction_method": "from_risks_json",
+                    "risks_json": risks_json,
+                }
+                # 从 risks_json 提取关键信息
+                if doc_type == "quotation":
+                    summary["total_quoted"] = risks_json.get("total_estimated_risk", "N/A")
+                    risk_items = risks_json.get("risks", [])
+                    summary["risks_summary"] = [
+                        {"title": r.get("title", ""), "category": r.get("category", "")}
+                        for r in risk_items
+                    ]
+                elif doc_type == "contract":
+                    risk_items = risks_json.get("risks", [])
+                    summary["risks_summary"] = [
+                        {"title": r.get("title", ""), "category": r.get("category", "")}
+                        for r in risk_items
+                    ]
+            else:
+                # 无已有分析结果，使用分类器结果构建简略摘要
+                classifications = doc_analysis.classifications_json or {}
+                summary = {
+                    "doc_type": doc_type,
+                    "source_file": filename,
+                    "_extraction_method": "from_classification",
+                    "classifications": classifications,
+                }
+
+            doc_summaries.append(summary)
+
+        # Step 3: 检测比对模式
+        check_mode = detect_check_mode(doc_summaries)
+        logger.info("[CrossCheck] 检测到比对模式: %s", check_mode)
+
+        if check_mode == "UNKNOWN":
+            logger.warning("[CrossCheck] 无法确定比对模式，跳过交叉核查")
+            return {
+                "status": "skipped",
+                "project_id": project_id,
+                "reason": "无法确定比对模式",
+            }
+
+        # Step 4: 调用 LLM 交叉比对
+        try:
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                with concurrent.futures.ThreadPoolExecutor() as executor:
+                    llm_response = executor.submit(
+                        lambda: asyncio.run(
+                            cross_check_documents(
+                                check_mode=check_mode,
+                                doc_summaries=doc_summaries,
+                            )
+                        )
+                    ).result()
+            else:
+                llm_response = loop.run_until_complete(
+                    cross_check_documents(
+                        check_mode=check_mode,
+                        doc_summaries=doc_summaries,
+                    )
+                )
+        except RuntimeError:
+            llm_response = asyncio.run(
+                cross_check_documents(
+                    check_mode=check_mode,
+                    doc_summaries=doc_summaries,
+                )
+            )
+
+        logger.info(
+            "[CrossCheck] LLM 交叉比对响应长度=%d",
+            len(llm_response) if llm_response else 0,
+        )
+
+        if not llm_response:
+            logger.warning("[CrossCheck] LLM 返回空响应，跳过交叉核查")
+            return {
+                "status": "failed",
+                "project_id": project_id,
+                "error_message": "LLM 返回空响应",
+            }
+
+        # Step 5: 解析 JSON 结果
+        result_data, parse_err = parse_json(llm_response)
+        if result_data is None:
+            logger.warning("[CrossCheck] JSON 解析失败: %s", parse_err)
+            return {
+                "status": "failed",
+                "project_id": project_id,
+                "error_message": f"JSON 解析失败: {parse_err}",
+            }
+
+        # Step 6: 将结果存储到 Analysis.raw_result_json
+        # 需要找到最近一次的 Analysis 记录，更新 raw_result_json
+        latest_analysis = db.query(Analysis).filter(
+            Analysis.project_id == project_id,
+            Analysis.status == "completed",
+        ).order_by(Analysis.completed_at.desc()).first()
+
+        if latest_analysis:
+            raw_json = dict(latest_analysis.raw_result_json or {})
+            raw_json["cross_document_checks"] = result_data
+            latest_analysis.raw_result_json = raw_json
+            db.commit()
+            logger.info(
+                "[CrossCheck] 交叉核查结果已存储: analysis_id=%s, discrepancies=%d",
+                latest_analysis.id,
+                len(result_data.get("discrepancies", [])),
+            )
+        else:
+            logger.warning(
+                "[CrossCheck] 未找到 completed 状态的 Analysis 记录，结果无法存储",
+            )
+
+        return {
+            "status": "completed",
+            "project_id": project_id,
+            "check_mode": check_mode,
+            "discrepancies_count": len(result_data.get("discrepancies", [])),
+        }
+
+    except Exception as e:
+        logger.error(
+            "[CrossCheck] 交叉核查异常 project=%s: %s",
+            project_id, str(e),
+        )
+        return {
+            "status": "failed",
+            "project_id": project_id,
+            "error_message": str(e),
+        }
+
+    finally:
+        db.close()
+
+
 def run_document_analysis_sync(project_id: str, project_file_id: str) -> dict:
     """同步执行文档分析（合同/报价单审核），供 Celery 任务调用
 

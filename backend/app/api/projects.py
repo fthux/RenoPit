@@ -802,6 +802,10 @@ async def get_analysis_result(project_id: str, db: Session = Depends(get_db)):
 
     result = _build_result_data(analysis)
     result["document_analyses"] = _serialize_document_analyses(document_analyses, project_id)
+    # 注入交叉核查结果（如果存在）
+    raw_data = analysis.raw_result_json or {}
+    if "cross_document_checks" in raw_data:
+        result["cross_document_checks"] = raw_data["cross_document_checks"]
     return result
 
 

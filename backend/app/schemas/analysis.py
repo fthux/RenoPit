@@ -111,6 +111,53 @@ class ExtraItemPrediction(BaseModel):
     predicted_items: List[PredictedItem] = Field(default_factory=list, description="预测增项列表，按概率从高到低排列")
 
 
+class DiscrepancyItem(BaseModel):
+    """交叉核查中的单个不一致项"""
+    type: str = Field(description="差异类型: scope_mismatch, material_substitution, payment_inconsistency, process_downgrade, price_discrepancy, supervision_tracking, other")
+    severity: str = Field(description="严重等级: high / medium / low")
+    description: str = Field(description="差异描述")
+    source_a: str = Field(description="来源文件A中的具体位置引用")
+    source_b: str = Field(description="来源文件B中的具体位置引用或说明")
+    risk: str = Field(description="可能导致的后果")
+    suggested_action: str = Field(description="建议业主的处理方式")
+
+
+class UnresolvedIssue(BaseModel):
+    """监理报告中未解决的问题"""
+    issue: str = Field(description="问题描述")
+    first_reported: str = Field(description="首次报告的文件名")
+    last_reported: str = Field(description="最近报告的文件名")
+    status: str = Field(description="当前状态")
+    severity: str = Field(description="严重等级")
+    risk: str = Field(description="问题得不到解决可能导致的后果")
+
+
+class ResolvedIssue(BaseModel):
+    """监理报告中已解决的问题"""
+    issue: str = Field(description="问题描述")
+    first_reported: str = Field(description="首次报告的文件名")
+    resolved_in: str = Field(description="在哪份报告中解决")
+    resolution: str = Field(description="整改结果")
+
+
+class SupervisionTracking(BaseModel):
+    """监理报告问题追踪"""
+    total_issues_found: int = Field(default=0, description="发现的问题总数")
+    resolved: int = Field(default=0, description="已解决的问题数")
+    unresolved: int = Field(default=0, description="未解决的问题数")
+    unresolved_items: List[UnresolvedIssue] = Field(default_factory=list)
+    resolved_items: List[ResolvedIssue] = Field(default_factory=list)
+
+
+class CrossDocumentChecks(BaseModel):
+    """多文档交叉核查结果"""
+    check_mode: str = Field(description="比对模式")
+    document_pairs: List[str] = Field(default_factory=list, description="参与比对的文档名称列表")
+    pair_type: str = Field(default="", description="比对对类型")
+    discrepancies: List[DiscrepancyItem] = Field(default_factory=list, description="不一致项列表")
+    supervision_tracking: Optional[SupervisionTracking] = Field(default=None, description="监理报告追踪结果")
+
+
 class AnalysisFrontendResponse(BaseModel):
     """前端使用的分析结果格式：
     - summary: AnalysisSummary 对象（含 total_pitfalls, score 等数字统计）

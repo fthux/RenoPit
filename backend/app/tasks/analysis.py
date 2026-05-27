@@ -5,6 +5,7 @@ Celery 分析任务 — 异步执行 AI 分析并通过 SSE 推送状态变更
 import logging
 import asyncio
 from datetime import datetime
+from typing import Optional
 
 from .celery_app import celery_app
 from ..core.database import SessionLocal
@@ -112,18 +113,44 @@ def run_analysis_task(self, project_id: str):
                     str(e),
                 )
 
-        # Step 5: 根据结果推送 SSE + 更新项目状态
+        # Step 5: 多文档交叉核查（当有 ≥ 2 份文本文件时自动触发）
+        cross_check_result: Optional[dict] = None
+        if result.get("status") == "completed" and len(doc_results) >= 2:
+            try:
+                from ..services.analysis_engine import run_cross_check_sync
+                logger.info(
+                    "Starting cross-document check for project=%s (doc_count=%d)",
+                    project_id, len(doc_results),
+                )
+                cross_check_result = run_cross_check_sync(project_id)
+                logger.info(
+                    "Cross-document check completed for project=%s: %s",
+                    project_id, cross_check_result.get("status"),
+                )
+            except Exception as e:
+                logger.error(
+                    "Cross-document check failed for project=%s: %s",
+                    project_id, str(e),
+                )
+
+        # Step 6: 根据结果推送 SSE + 更新项目状态
         if result.get("status") == "completed":
             # 统计文档分析结果
             doc_completed = sum(1 for r in doc_results if r.get("status") == "completed")
             doc_total = len(doc_results)
             doc_message = f"，合同/报价单分析完成 {doc_completed}/{doc_total}" if doc_total > 0 else ""
 
+            # 交叉核查信息
+            cross_check_message = ""
+            if cross_check_result and cross_check_result.get("status") == "completed":
+                dc = cross_check_result.get("discrepancies_count", 0)
+                cross_check_message = f"，发现 {dc} 项跨文档不一致" if dc > 0 else "，未发现跨文档不一致"
+
             _update_project_status(db, project_id, "completed")
             _publish_sse(project_id, "status_change", {
                 "project_id": project_id,
                 "status": "completed",
-                "message": f"分析完成，发现 {result.get('problems_count', 0)} 个问题{doc_message}",
+                "message": f"分析完成，发现 {result.get('problems_count', 0)} 个问题{doc_message}{cross_check_message}",
                 "problems_count": result.get("problems_count", 0),
                 "timestamp": datetime.utcnow().isoformat(),
             })

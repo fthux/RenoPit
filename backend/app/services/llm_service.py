@@ -22,9 +22,9 @@ logger = logging.getLogger(__name__)
 # ============================================================
 
 # 重试配置
-MAX_RETRIES = 3
-BASE_DELAY = 2  # 秒，指数退避：2s → 4s → 8s
-TIMEOUT_SECONDS = 120
+MAX_RETRIES = 2
+BASE_DELAY = 2  # 秒，指数退避：2s → 4s
+TIMEOUT_SECONDS = 180
 
 # 模型名称
 OPENAI_MODEL = "gpt-4o"
@@ -280,6 +280,7 @@ async def _call_gemini(
             lambda: model.generate_content(
                 parts,
                 generation_config=generation_config,
+                request_options={"timeout": TIMEOUT_SECONDS},
                 **generate_kwargs,
             ),
         )
@@ -616,7 +617,11 @@ async def _call_gemini_text(
     try:
         response = await loop.run_in_executor(
             None,
-            lambda: model.generate_content(user_message, generation_config=generation_config),
+            lambda: model.generate_content(
+                user_message,
+                generation_config=generation_config,
+                request_options={"timeout": TIMEOUT_SECONDS},
+            ),
         )
         result = response.text or ""
         logger.info("[Gemini-Text] 调用成功: response_len=%d", len(result))
@@ -677,6 +682,146 @@ async def _retry_with_backoff_text(
     raise RuntimeError(
         f"{model_name} 文档分析失败（重试 {MAX_RETRIES} 次后）: {last_error_detail}"
     ) from last_error
+
+
+async def extract_document_summary(
+    document_text: str,
+    filename: str,
+    doc_type: str = "general",
+) -> str:
+    """调用 LLM 提取单份文档的结构化摘要
+
+    使用轻量 Prompt 对文档进行结构化提取，大幅压缩 token 量。
+
+    Args:
+        document_text: 文档纯文本
+        filename: 文件名
+        doc_type: 文档类型（quotation / contract / supervision_report / general）
+
+    Returns:
+        LLM 响应文本（期望为 JSON 格式的结构化摘要）
+    """
+    from .document_extractor import build_extraction_system_prompt, build_extraction_user_message
+
+    system_prompt = build_extraction_system_prompt(doc_type)
+    user_message = build_extraction_user_message(document_text, filename)
+
+    logger.info(
+        "[LLM] extract_document_summary 开始: file=%s, doc_type=%s, text_len=%d",
+        filename, doc_type, len(document_text),
+    )
+
+    provider = settings.AI_MODEL_PROVIDER.lower()
+    last_error = None
+
+    if provider == "gemini":
+        primary_caller = _call_gemini_text
+        primary_name = "Gemini"
+        fallback_caller = _call_openai_text
+        fallback_name = "OpenAI GPT-4o"
+    else:
+        primary_caller = _call_openai_text
+        primary_name = "OpenAI GPT-4o"
+        fallback_caller = _call_gemini_text
+        fallback_name = "Gemini"
+
+    try:
+        logger.info("[LLM] 文档摘要提取尝试主模型: %s", primary_name)
+        return await _retry_with_backoff_text(
+            primary_caller,
+            primary_name,
+            system_prompt,
+            user_message,
+        )
+    except Exception as e:
+        last_error = e
+        logger.error("[LLM] 文档摘要提取主模型 %s 失败: %s", primary_name, str(e))
+        try:
+            logger.info("[LLM] 文档摘要提取尝试备用模型: %s", fallback_name)
+            return await _retry_with_backoff_text(
+                fallback_caller,
+                fallback_name,
+                system_prompt,
+                user_message,
+            )
+        except Exception as fallback_error:
+            full_error = (
+                f"文档摘要提取所有模型调用均失败。主模型({primary_name}): {last_error}，"
+                f"备用模型({fallback_name}): {fallback_error}"
+            )
+            logger.error("[LLM] %s", full_error)
+            raise RuntimeError(full_error) from fallback_error
+
+
+async def cross_check_documents(
+    check_mode: str,
+    doc_summaries: list[dict],
+) -> str:
+    """调用 LLM 进行多文档交叉比对
+
+    将多份文档的结构化摘要合并，调用交叉比对 Prompt 找出不一致之处。
+
+    Args:
+        check_mode: 比对模式
+        doc_summaries: 文档结构化摘要列表
+
+    Returns:
+        LLM 响应文本（期望为 JSON 格式的交叉核查结果）
+    """
+    from .prompt_builder import build_cross_check_prompt
+
+    enable_supervision_tracking = (check_mode == "SUPERVISION_TRACKING")
+    system_prompt, user_message = build_cross_check_prompt(
+        check_mode=check_mode,
+        doc_summaries=doc_summaries,
+        enable_supervision_tracking=enable_supervision_tracking,
+    )
+
+    logger.info(
+        "[LLM] cross_check_documents 开始: check_mode=%s, doc_count=%d",
+        check_mode, len(doc_summaries),
+    )
+
+    provider = settings.AI_MODEL_PROVIDER.lower()
+    last_error = None
+
+    if provider == "gemini":
+        primary_caller = _call_gemini_text
+        primary_name = "Gemini"
+        fallback_caller = _call_openai_text
+        fallback_name = "OpenAI GPT-4o"
+    else:
+        primary_caller = _call_openai_text
+        primary_name = "OpenAI GPT-4o"
+        fallback_caller = _call_gemini_text
+        fallback_name = "Gemini"
+
+    try:
+        logger.info("[LLM] 交叉比对尝试主模型: %s", primary_name)
+        return await _retry_with_backoff_text(
+            primary_caller,
+            primary_name,
+            system_prompt,
+            user_message,
+        )
+    except Exception as e:
+        last_error = e
+        logger.error("[LLM] 交叉比对主模型 %s 失败: %s", primary_name, str(e))
+        try:
+            logger.info("[LLM] 交叉比对尝试备用模型: %s", fallback_name)
+            return await _retry_with_backoff_text(
+                fallback_caller,
+                fallback_name,
+                system_prompt,
+                user_message,
+            )
+        except Exception as fallback_error:
+            full_error = (
+                f"交叉比对所有模型调用均失败。主模型({primary_name}): {last_error}，"
+                f"备用模型({fallback_name}): {fallback_error}"
+            )
+            logger.error("[LLM] %s", full_error)
+            raise RuntimeError(full_error) from fallback_error
 
 
 async def _retry_with_backoff(

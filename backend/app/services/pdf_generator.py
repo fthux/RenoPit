@@ -281,6 +281,12 @@ def _build_content(project_id: str, analysis_data: dict, images_data: list, docu
                 story.append(Spacer(1, 4 * mm))
                 break  # Only render one prediction section
 
+        # Cross Document Check Section
+        cross_checks = analysis_data.get("cross_document_checks")
+        if cross_checks:
+            story = _build_cross_check_section(story, cross_checks, S)
+            story.append(Spacer(1, 4 * mm))
+
         story.append(PageBreak())
 
 
@@ -814,6 +820,246 @@ def _build_extra_prediction_section(story: list, prediction: dict, S: dict) -> l
     return story
 
 
+def _build_cross_check_section(story: list, cross_checks: dict, S: dict) -> list:
+    """Build a section for cross-document check results in the PDF.
+
+    The `cross_checks` dict has the structure from CrossDocumentChecks:
+    {check_mode, document_pairs, discrepancies, supervision_tracking, ...}
+    """
+    check_mode = cross_checks.get("check_mode", "")
+    document_pairs = cross_checks.get("document_pairs", [])
+    discrepancies = cross_checks.get("discrepancies", []) or []
+    supervision_tracking = cross_checks.get("supervision_tracking")
+
+    check_mode_label = {
+        "BILL_vs_CONTRACT": "合同 vs 报价单",
+        "SUPERVISION_TRACKING": "监理报告追踪",
+        "DESIGN_vs_BILL": "设计说明 vs 报价单",
+    }.get(check_mode, "跨文档核查")
+
+    story.append(Paragraph("跨文档交叉核查", S["h1"]))
+    story.append(Paragraph(
+        f"AI 对上传的多份文档进行了交叉比对，比对模式：<b>{_sanitize_html(check_mode_label)}</b>。"
+        f"共发现 <b>{len(discrepancies)}</b> 项不一致。",
+        S["body"],
+    ))
+    story.append(Spacer(1, 2 * mm))
+
+    # Document pairs info
+    if document_pairs:
+        story.append(Paragraph(
+            f'<font color="{_COLORS["text_muted"]}">参与比对的文档：{_sanitize_html("、".join(document_pairs))}</font>',
+            S["body_small"],
+        ))
+        story.append(Spacer(1, 3 * mm))
+
+    # Discrepancy type labels
+    disc_type_labels = {
+        "scope_mismatch": "范围缺失",
+        "material_substitution": "材料替换",
+        "payment_inconsistency": "付款矛盾",
+        "process_downgrade": "工艺降级",
+        "price_discrepancy": "价格差异",
+        "supervision_tracking": "问题追踪",
+        "other": "其他",
+    }
+    disc_type_colors = {
+        "scope_mismatch": _COLORS["critical"],
+        "material_substitution": _COLORS["high"],
+        "payment_inconsistency": _COLORS["medium"],
+        "process_downgrade": _COLORS["critical"],
+        "price_discrepancy": _COLORS["high"],
+        "supervision_tracking": _COLORS["low"],
+        "other": _COLORS["text_muted"],
+    }
+
+    for item in discrepancies:
+        item_type = item.get("type", "other")
+        item_severity = item.get("severity", "medium")
+        item_desc = item.get("description", "")
+        item_source_a = item.get("source_a", "")
+        item_source_b = item.get("source_b", "")
+        item_risk = item.get("risk", "")
+        item_action = item.get("suggested_action", "")
+
+        type_label = disc_type_labels.get(item_type, item_type)
+        type_color = disc_type_colors.get(item_type, _COLORS["text"])
+
+        sev_label = _severity_label(item_severity)
+        sev_color = {
+            "high": _COLORS["critical"],
+            "medium": _COLORS["medium"],
+            "low": _COLORS["low"],
+        }.get(item_severity, _COLORS["text_muted"])
+
+        card_data = []
+
+        # Header
+        card_data.append([
+            Paragraph(
+                f'<font color="{type_color}"><b>[{_sanitize_html(type_label)}]</b></font> '
+                f'<font color="{sev_color}">[{sev_label}]</font> '
+                f'<font color="{_COLORS["text"]}"><b>{_sanitize_html(item_desc)}</b></font>',
+                S["body_small"],
+            )
+        ])
+
+        # Source A
+        if item_source_a:
+            card_data.append([
+                Paragraph(
+                    f'<font color="{_COLORS["text_muted"]}"><b>文档 A：</b></font>'
+                    f'<font color="{_COLORS["text"]}">{_sanitize_html(item_source_a)}</font>',
+                    S["body_small"],
+                )
+            ])
+
+        # Source B
+        if item_source_b:
+            card_data.append([
+                Paragraph(
+                    f'<font color="{_COLORS["text_muted"]}"><b>文档 B：</b></font>'
+                    f'<font color="{_COLORS["text"]}">{_sanitize_html(item_source_b)}</font>',
+                    S["body_small"],
+                )
+            ])
+
+        # Risk
+        if item_risk:
+            card_data.append([
+                Paragraph(
+                    f'<font color="{_COLORS["critical"]}"><b>风险：</b></font>'
+                    f'<font color="{_COLORS["text"]}">{_sanitize_html(item_risk)}</font>',
+                    S["body_small"],
+                )
+            ])
+
+        # Suggested action
+        if item_action:
+            card_data.append([
+                Paragraph(
+                    f'<font color="{_COLORS["accent"]}"><b>✓ 建议：</b></font>'
+                    f'<font color="{_COLORS["text"]}">{_sanitize_html(item_action)}</font>',
+                    S["body_small"],
+                )
+            ])
+
+        card = Table(card_data, colWidths=[165 * mm])
+        card.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor(_COLORS["bg_light"])),
+            ("BOX", (0, 0), (-1, -1), 0.5, colors.HexColor(type_color)),
+            ("TOPPADDING", (0, 0), (-1, -1), 6),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+            ("LEFTPADDING", (0, 0), (-1, -1), 10),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 10),
+        ]))
+        story.append(card)
+        story.append(Spacer(1, 2 * mm))
+
+    # Supervision tracking subsection
+    if supervision_tracking:
+        story.append(Spacer(1, 4 * mm))
+        story.append(Paragraph(
+            f'<font color="{_COLORS["primary"]}"><b>监理报告问题追踪</b></font>',
+            S["h2"],
+        ))
+
+        total = supervision_tracking.get("total_issues_found", 0)
+        resolved = supervision_tracking.get("resolved", 0)
+        unresolved = supervision_tracking.get("unresolved", 0)
+
+        story.append(Paragraph(
+            f'共发现 <b>{total}</b> 个问题，'
+            f'<font color="{_COLORS["accent"]}">已解决 <b>{resolved}</b></font>，'
+            f'<font color="{_COLORS["critical"]}">未解决 <b>{unresolved}</b></font>',
+            S["body_small"],
+        ))
+        story.append(Spacer(1, 2 * mm))
+
+        # Unresolved items
+        unresolved_items = supervision_tracking.get("unresolved_items", []) or []
+        if unresolved_items:
+            story.append(Paragraph(
+                f'<font color="{_COLORS["critical"]}"><b>未解决的问题：</b></font>',
+                S["body_small"],
+            ))
+            for item in unresolved_items:
+                issue = item.get("issue", "")
+                first = item.get("first_reported", "")
+                last = item.get("last_reported", "")
+                risk = item.get("risk", "")
+                card_data = [
+                    [
+                        Paragraph(
+                            f'<font color="{_COLORS["critical"]}">●</font> '
+                            f'<font color="{_COLORS["text"]}"><b>{_sanitize_html(issue)}</b></font>',
+                            S["body_small"],
+                        )
+                    ],
+                    [
+                        Paragraph(
+                            f'首次报告：{_sanitize_html(first)} | 最近报告：{_sanitize_html(last)}'
+                            + (f' | 风险：{_sanitize_html(risk)}' if risk else ''),
+                            S["body_small"],
+                        )
+                    ],
+                ]
+                card = Table(card_data, colWidths=[165 * mm])
+                card.setStyle(TableStyle([
+                    ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor(_COLORS["bg_critical"])),
+                    ("BOX", (0, 0), (-1, -1), 0.5, colors.HexColor(_COLORS["critical"])),
+                    ("TOPPADDING", (0, 0), (-1, -1), 4),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+                    ("LEFTPADDING", (0, 0), (-1, -1), 8),
+                    ("RIGHTPADDING", (0, 0), (-1, -1), 8),
+                ]))
+                story.append(card)
+                story.append(Spacer(1, 2 * mm))
+
+        # Resolved items
+        resolved_items = supervision_tracking.get("resolved_items", []) or []
+        if resolved_items:
+            story.append(Spacer(1, 2 * mm))
+            story.append(Paragraph(
+                f'<font color="{_COLORS["accent"]}"><b>已解决的问题：</b></font>',
+                S["body_small"],
+            ))
+            for item in resolved_items:
+                issue = item.get("issue", "")
+                first = item.get("first_reported", "")
+                resolved_in = item.get("resolved_in", "")
+                resolution = item.get("resolution", "")
+                card_data = [
+                    [
+                        Paragraph(
+                            f'<font color="{_COLORS["accent"]}">✓</font> '
+                            f'<font color="{_COLORS["text"]}"><b>{_sanitize_html(issue)}</b></font>',
+                            S["body_small"],
+                        )
+                    ],
+                    [
+                        Paragraph(
+                            f'首次报告：{_sanitize_html(first)} → 在 {_sanitize_html(resolved_in)} 中解决'
+                            + (f' | 结果：{_sanitize_html(resolution)}' if resolution else ''),
+                            S["body_small"],
+                        )
+                    ],
+                ]
+                card = Table(card_data, colWidths=[165 * mm])
+                card.setStyle(TableStyle([
+                    ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor(_COLORS["bg_light"])),
+                    ("BOX", (0, 0), (-1, -1), 0.5, colors.HexColor(_COLORS["accent"])),
+                    ("TOPPADDING", (0, 0), (-1, -1), 4),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+                    ("LEFTPADDING", (0, 0), (-1, -1), 8),
+                    ("RIGHTPADDING", (0, 0), (-1, -1), 8),
+                ]))
+                story.append(card)
+                story.append(Spacer(1, 2 * mm))
+
+    return story
+
+
 def _sanitize_html(text: str) -> str:
     """Escape HTML special characters to prevent ReportLab XML parsing errors."""
     if not isinstance(text, str):
@@ -895,6 +1141,7 @@ def generate_pdf(
             "summary": result_data.get("summary", {}),
             "pitfalls": result_data.get("pitfalls", []),
             "result_json": {},
+            "cross_document_checks": result_data.get("cross_document_checks"),
         }
 
         # Build PDF

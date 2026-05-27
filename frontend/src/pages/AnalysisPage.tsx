@@ -1,8 +1,9 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useParams, Link } from 'react-router-dom'
-import { ArrowLeft, Loader2, AlertTriangle, Zap, AlertCircle, Info, Download, ChevronRight, Shield, ShieldCheck, FileText, DollarSign, FileSignature, PlusCircle, ScrollText, BarChart3, Award, ClipboardList, TrendingUp } from 'lucide-react'
+import { ArrowLeft, Loader2, AlertTriangle, Zap, AlertCircle, Info, Download, ChevronRight, Shield, ShieldCheck, FileText, DollarSign, FileSignature, PlusCircle, ScrollText, BarChart3, Award, ClipboardList, TrendingUp, GitCompare } from 'lucide-react'
 import type { AnalysisResult, PitfallItem, PitfallSeverity } from '../types'
 import ExtraPredictionPanel from '../components/ExtraPredictionPanel'
+import CrossCheckPanel from '../components/CrossCheckPanel'
 
 const API = '/api'
 
@@ -69,6 +70,7 @@ export default function AnalysisPage() {
     const docs = result.document_analyses
     const hasDocs = docs && Object.keys(docs).length > 0
     const hasExtra = hasDocs && Object.values(docs).some((doc: any) => doc.extra_item_prediction)
+    const hasCrossCheck = result && (result as any).cross_document_checks
     const sectionIds = [
       'section-summary',
       'section-pitfalls',
@@ -76,6 +78,7 @@ export default function AnalysisPage() {
       'section-details',
       ...(hasDocs ? ['section-contract'] : []),
       ...(hasExtra ? ['section-extra'] : []),
+      ...(hasCrossCheck ? ['section-crosscheck'] : []),
     ]
     const entriesMap = new Map<string, number>()
 
@@ -178,6 +181,7 @@ export default function AnalysisPage() {
 
   const hasDocumentAnalyses = document_analyses && Object.keys(document_analyses).length > 0
   const hasExtraPrediction = hasDocumentAnalyses && Object.values(document_analyses).some((doc: any) => doc.extra_item_prediction)
+  const hasCrossCheck = result && (result as any).cross_document_checks
 
   const navItems = [
     { id: 'section-summary', Icon: ScrollText, label: '总体评价', color: 'text-teal-500' },
@@ -186,6 +190,7 @@ export default function AnalysisPage() {
     { id: 'section-details', Icon: ClipboardList, label: '问题详情', color: 'text-slate-500' },
     ...(hasDocumentAnalyses ? [{ id: 'section-contract', Icon: FileText, label: '合同/报价单', color: 'text-violet-500' }] : []),
     ...(hasExtraPrediction ? [{ id: 'section-extra', Icon: TrendingUp, label: '增项预测', color: 'text-purple-500' }] : []),
+    ...(hasCrossCheck ? [{ id: 'section-crosscheck', Icon: GitCompare, label: '交叉核查', color: 'text-indigo-500' }] : []),
   ]
 
   const HEADER_OFFSET = 100 // offset in px to account for fixed header (breadcrumb + title + metadata + mobile nav)
@@ -484,6 +489,17 @@ export default function AnalysisPage() {
                   </div>
                 ))}
               </div>
+            </div>
+          )}
+
+          {/* Section: 跨文档交叉核查 */}
+          {hasCrossCheck && (
+            <div id="section-crosscheck" className="mb-8">
+              <div className="flex items-center gap-2 mb-4">
+                <GitCompare className="w-5 h-5 text-indigo-500" />
+                <h2 className="text-lg font-semibold text-slate-800">跨文档交叉核查</h2>
+              </div>
+              <CrossCheckPanel crossChecks={(result as any).cross_document_checks} />
             </div>
           )}
 

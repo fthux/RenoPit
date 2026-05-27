@@ -370,3 +370,38 @@ def load_pitfalls() -> dict:
     if _default_loader is None:
         _default_loader = PitfallsLoader()
     return _default_loader.load()
+
+
+def build_cross_check_prompt(
+    check_mode: str,
+    doc_summaries: list[dict],
+    enable_supervision_tracking: bool = False,
+) -> tuple[str, str]:
+    """构建交叉核查的系统提示词和用户消息
+
+    这是一个组合函数，将 system_prompt 和 user_message 一起返回，
+    方便调用方一次获取完整的 Prompt。
+
+    Args:
+        check_mode: 比对模式（BILL_vs_CONTRACT / SUPERVISION_TRACKING / DESIGN_vs_BILL）
+        doc_summaries: 文档结构化摘要列表
+        enable_supervision_tracking: 是否启用监理报告追踪（仅当 check_mode 为 SUPERVISION_TRACKING 时生效）
+
+    Returns:
+        (system_prompt, user_message) 元组
+    """
+    from .cross_checker import (
+        build_cross_check_system_prompt,
+        build_cross_check_user_message,
+        build_supervision_tracking_system_prompt,
+        build_supervision_tracking_user_message,
+    )
+
+    if check_mode == "SUPERVISION_TRACKING" and enable_supervision_tracking:
+        system_prompt = build_supervision_tracking_system_prompt()
+        user_message = build_supervision_tracking_user_message(doc_summaries)
+    else:
+        system_prompt = build_cross_check_system_prompt(check_mode)
+        user_message = build_cross_check_user_message(doc_summaries)
+
+    return system_prompt, user_message

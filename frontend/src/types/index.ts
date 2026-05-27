@@ -150,8 +150,48 @@ export interface ExtraItemPrediction {
   predicted_items: PredictedItem[];
 }
 
-// Update DocumentAnalysisResult to include optional extra_item_prediction
-// This is done via declaration merging approach below
+// --- Cross Document Checks ---
+export interface DiscrepancyItem {
+  type: string;
+  severity: 'high' | 'medium' | 'low';
+  description: string;
+  source_a: string;
+  source_b: string;
+  risk: string;
+  suggested_action: string;
+}
+
+export interface UnresolvedIssue {
+  issue: string;
+  first_reported: string;
+  last_reported: string;
+  status: string;
+  severity: string;
+  risk: string;
+}
+
+export interface ResolvedIssue {
+  issue: string;
+  first_reported: string;
+  resolved_in: string;
+  resolution: string;
+}
+
+export interface SupervisionTracking {
+  total_issues_found: number;
+  resolved: number;
+  unresolved: number;
+  unresolved_items: UnresolvedIssue[];
+  resolved_items: ResolvedIssue[];
+}
+
+export interface CrossDocumentChecks {
+  check_mode: string;
+  document_pairs: string[];
+  pair_type: string;
+  discrepancies: DiscrepancyItem[];
+  supervision_tracking?: SupervisionTracking;
+}
 
 // --- SSE Events ---
 export type SSEEventType =
