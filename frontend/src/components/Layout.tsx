@@ -1,5 +1,5 @@
 import { Link, Outlet, useLocation } from 'react-router-dom'
-import { FolderOpen } from 'lucide-react'
+import { FolderOpen, Plus } from 'lucide-react'
 import ToastProvider from './Toast'
 
 export default function Layout() {
@@ -30,6 +30,14 @@ export default function Layout() {
               </span>
             </Link>
             <nav className="flex items-center gap-1">
+              {location.pathname !== '/projects/new' && (
+                <Link
+                  to="/projects/new"
+                  className="flex items-center gap-1.5 px-4 py-2 bg-gradient-to-r from-blue-600 to-blue-500 text-white rounded-xl text-sm font-medium hover:from-blue-700 hover:to-blue-600 no-underline transition-all hover:scale-[1.02] active:scale-[0.98] shadow-lg shadow-blue-500/20 mr-2"
+                >
+                  <Plus className="w-4 h-4" /> 创建项目
+                </Link>
+              )}
               {navLinks.map((link) => {
                 const isActive = isActivePath(link.to)
                 return (

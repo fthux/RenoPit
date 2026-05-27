@@ -319,7 +319,7 @@ export default function ProjectPage() {
   }
   if (!project) {
     return (
-      <div className="max-w-6xl mx-auto px-4 py-8">
+      <div className="max-w-7xl mx-auto px-4 py-8">
         <div className="flex flex-col items-center justify-center min-h-[50vh] text-slate-400">
           <AlertCircle className="w-12 h-12 mb-3 text-slate-300" />
           <p className="text-lg font-medium text-slate-500">找不到此项目</p>
@@ -334,7 +334,7 @@ export default function ProjectPage() {
   const isAnalyzing = analyzing || project.status === 'analyzing'
 
   return (
-    <div className="max-w-6xl mx-auto px-4 py-8">
+    <div className="max-w-7xl mx-auto px-4 py-8">
       {/* Breadcrumb */}
       <div className="flex items-center gap-2 mb-8">
         <Link to="/projects" className="text-slate-400 hover:text-slate-600 no-underline flex items-center gap-1 text-sm transition-colors">
@@ -416,46 +416,51 @@ export default function ProjectPage() {
       </div>
 
       {/* Action Bar */}
-      <div className="bg-white rounded-2xl border border-slate-200 p-5 mb-8 flex flex-wrap items-center gap-3 shadow-sm">
-        <div className="flex flex-col gap-1">
+      <div className="bg-white rounded-2xl border border-slate-200 p-5 mb-8 shadow-sm">
+        {/* Button Group */}
+        <div className="flex flex-wrap items-center gap-3">
           <label className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-medium cursor-pointer transition-all ${uploading || isAnalyzing ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'bg-slate-100 text-slate-700 hover:bg-slate-200 hover:scale-[1.02] active:scale-[0.98]'}`}>
             <Upload className="w-4 h-4" />
             {uploading ? '上传中...' : isAnalyzing ? '分析中...' : '上传文件'}
             <input type="file" multiple accept=".pdf,.png,.jpg,.jpeg,.webp,.txt,.docx,.md" onChange={handleFileUpload} disabled={uploading || isAnalyzing} className="hidden" />
           </label>
-          <span className="text-xs text-amber-500 px-1">PDF 中的图片内容暂不支持 AI 视觉分析</span>
+
+          {isAnalyzing ? (
+            <button onClick={stopAnalysis} disabled={stopping}
+              className="flex items-center gap-2 px-5 py-2.5 bg-red-600 text-white rounded-xl text-sm font-medium hover:bg-red-700 disabled:opacity-40 transition-all hover:scale-[1.02] active:scale-[0.98] shadow-lg shadow-red-500/20">
+              <Square className="w-4 h-4" /> {stopping ? '停止中...' : '停止分析'}
+            </button>
+          ) : (
+            <button
+              onClick={() => {
+                if (project?.status === 'completed') {
+                  setShowReanalyzeConfirm(true)
+                } else {
+                  startAnalysis()
+                }
+              }}
+              disabled={!canAnalyze}
+              className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-blue-600 to-blue-500 text-white rounded-xl text-sm font-medium hover:from-blue-700 hover:to-blue-600 disabled:opacity-40 transition-all hover:scale-[1.02] active:scale-[0.98] shadow-lg shadow-blue-500/20"
+            >
+              {project?.status === 'completed' ? (
+                <><RefreshCw className="w-4 h-4" /> 重新分析</>
+              ) : (
+                <><Play className="w-4 h-4" /> 开始分析</>
+              )}
+            </button>
+          )}
+
+          {project.status === 'completed' && (
+            <Link to={`/project/${projectId}/analysis`} className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-green-600 to-emerald-500 text-white rounded-xl text-sm font-medium hover:from-green-700 hover:to-emerald-600 no-underline transition-all hover:scale-[1.02] active:scale-[0.98] shadow-lg shadow-green-500/20">
+              <FileSearch className="w-4 h-4" /> 查看报告
+            </Link>
+          )}
         </div>
 
-        {isAnalyzing ? (
-          <button onClick={stopAnalysis} disabled={stopping}
-            className="flex items-center gap-2 px-5 py-2.5 bg-red-600 text-white rounded-xl text-sm font-medium hover:bg-red-700 disabled:opacity-40 transition-all hover:scale-[1.02] active:scale-[0.98] shadow-lg shadow-red-500/20">
-            <Square className="w-4 h-4" /> {stopping ? '停止中...' : '停止分析'}
-          </button>
-        ) : (
-          <button
-            onClick={() => {
-              if (project?.status === 'completed') {
-                setShowReanalyzeConfirm(true)
-              } else {
-                startAnalysis()
-              }
-            }}
-            disabled={!canAnalyze}
-            className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-blue-600 to-blue-500 text-white rounded-xl text-sm font-medium hover:from-blue-700 hover:to-blue-600 disabled:opacity-40 transition-all hover:scale-[1.02] active:scale-[0.98] shadow-lg shadow-blue-500/20"
-          >
-            {project?.status === 'completed' ? (
-              <><RefreshCw className="w-4 h-4" /> 重新分析</>
-            ) : (
-              <><Play className="w-4 h-4" /> 开始分析</>
-            )}
-          </button>
-        )}
-
-        {project.status === 'completed' && (
-          <Link to={`/project/${projectId}/analysis`} className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-green-600 to-emerald-500 text-white rounded-xl text-sm font-medium hover:from-green-700 hover:to-emerald-600 no-underline transition-all hover:scale-[1.02] active:scale-[0.98] shadow-lg shadow-green-500/20">
-            <FileSearch className="w-4 h-4" /> 查看报告
-          </Link>
-        )}
+        {/* Description text below button group */}
+        <div className="mt-3">
+          <span className="text-xs text-amber-500">PDF 中的图片内容暂不支持 AI 视觉分析</span>
+        </div>
       </div>
 
       {/* Re-analysis Confirm Dialog */}

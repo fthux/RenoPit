@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useParams, Link } from 'react-router-dom'
-import { ArrowLeft, Loader2, AlertTriangle, Zap, AlertCircle, Info, Download, ChevronRight, Shield, ShieldCheck, FileText, DollarSign, FileSignature, PlusCircle, ScrollText, BarChart3, Award, ClipboardList, TrendingUp, GitCompare } from 'lucide-react'
+import { ArrowLeft, Loader2, AlertTriangle, Zap, AlertCircle, Info, Download, ChevronRight, Shield, ShieldCheck, FileText, DollarSign, FileSignature, PlusCircle, ScrollText, BarChart3, Award, ClipboardList, TrendingUp, GitCompare, ArrowUpToLine } from 'lucide-react'
 import type { AnalysisResult, PitfallItem, PitfallSeverity } from '../types'
 import ExtraPredictionPanel from '../components/ExtraPredictionPanel'
 import CrossCheckPanel from '../components/CrossCheckPanel'
@@ -22,6 +22,7 @@ export default function AnalysisPage() {
   const [downloading, setDownloading] = useState(false)
   const [activeSection, setActiveSection] = useState('')
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
+  const [showFloatingButtons, setShowFloatingButtons] = useState(false)
   const observerRef = useRef<IntersectionObserver | null>(null)
 
   const handleDownloadPdf = useCallback(async () => {
@@ -59,6 +60,15 @@ export default function AnalysisPage() {
 
   useEffect(() => {
     document.title = '分析结果 - 装闭'
+  }, [])
+
+  // Scroll listener for floating buttons
+  useEffect(() => {
+    const handleScroll = () => {
+      setShowFloatingButtons(window.scrollY > 600)
+    }
+    window.addEventListener('scroll', handleScroll, { passive: true })
+    return () => window.removeEventListener('scroll', handleScroll)
   }, [])
 
   useEffect(() => { fetchAnalysis() }, [fetchAnalysis])
@@ -126,7 +136,7 @@ export default function AnalysisPage() {
 
   if (error || !result) {
     return (
-      <div className="max-w-6xl mx-auto px-4 py-8">
+      <div className="max-w-7xl mx-auto px-4 py-8">
         <Link to={`/project/${projectId}`} className="text-slate-400 hover:text-slate-600 no-underline flex items-center gap-1 text-sm mb-6 transition-colors"><ArrowLeft className="w-4 h-4" /> 返回项目</Link>
         <div className="flex flex-col items-center justify-center min-h-[50vh] text-slate-400">
           <AlertTriangle className="w-12 h-12 text-slate-300 mb-3" />
@@ -138,7 +148,7 @@ export default function AnalysisPage() {
 
   if (result.status === 'failed') {
     return (
-      <div className="max-w-6xl mx-auto px-4 py-8">
+      <div className="max-w-7xl mx-auto px-4 py-8">
         <Link to={`/project/${projectId}`} className="text-slate-400 hover:text-slate-600 no-underline flex items-center gap-1 text-sm mb-6 transition-colors"><ArrowLeft className="w-4 h-4" /> 返回项目</Link>
         <div className="bg-gradient-to-br from-red-50 to-orange-50 rounded-2xl border border-red-200 p-8 shadow-sm">
           <div className="flex items-center gap-3 mb-4">
@@ -204,7 +214,7 @@ export default function AnalysisPage() {
   }
 
   return (
-    <div className="max-w-6xl mx-auto px-4 py-8">
+    <div className="max-w-7xl mx-auto px-4 py-8">
       {/* Breadcrumb */}
       <div className="flex items-center gap-2 mb-6">
         <Link to={`/project/${projectId}`} className="text-slate-400 hover:text-slate-600 no-underline flex items-center gap-1 text-sm transition-colors">
@@ -221,7 +231,9 @@ export default function AnalysisPage() {
           <h1 className="text-3xl font-bold text-slate-800 tracking-tight">分析结果</h1>
           <p className="text-slate-500 text-sm mt-1.5">AI 检测到的装修陷阱总览</p>
         </div>
-        <button onClick={handleDownloadPdf} disabled={downloading} className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-green-600 to-emerald-500 text-white rounded-xl text-sm font-medium hover:from-green-700 hover:to-emerald-600 no-underline transition-all hover:scale-[1.02] active:scale-[0.98] shadow-lg shadow-green-500/20 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100">
+        <button onClick={handleDownloadPdf} disabled={downloading} className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-green-600 to-emerald-500 text-white rounded-xl text-sm font-
+medium hover:from-green-700 hover:to-emerald-600 no-underline transition-all hover:scale-[1.02] active:scale-[0.98] shadow-lg shadow-green-500/20 cursor-pointer disabled:opacity-50 disabled:cursor
++not-allowed disabled:hover:scale-100">
           {downloading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
           {downloading ? '下载中...' : '下载报告'}
         </button>
@@ -509,6 +521,38 @@ export default function AnalysisPage() {
               {/* Extra prediction fallback placeholder if needed */}
             </div>
           )}
+        </div>
+      </div>
+
+      {/* Floating action buttons */}
+      <div className={`fixed bottom-8 right-8 z-40 flex flex-col items-center gap-3 transition-all duration-300 ${showFloatingButtons ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4 pointer-events-none'}`}>
+        {/* Download report button */}
+        <div className="relative group">
+          <button
+            onClick={handleDownloadPdf}
+            disabled={downloading}
+            className="w-11 h-11 rounded-full bg-gradient-to-r from-green-600 to-emerald-500 text-white shadow-lg shadow-green-500/30 flex items-center justify-center hover:scale-110 active:scale-95 transition-all duration-200 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
+            title="下载报告"
+          >
+            {downloading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Download className="w-5 h-5" />}
+          </button>
+          <span className="absolute right-full mr-3 top-1/2 -translate-y-1/2 px-2.5 py-1.5 bg-slate-800 text-white text-xs font-medium rounded-lg whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none shadow-lg">
+            下载报告
+          </span>
+        </div>
+
+        {/* Back to top button */}
+        <div className="relative group">
+          <button
+            onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+            className="w-11 h-11 rounded-full bg-gradient-to-r from-blue-600 to-blue-500 text-white shadow-lg shadow-blue-500/30 flex items-center justify-center hover:scale-110 active:scale-95 transition-all duration-200 cursor-pointer"
+            title="返回顶部"
+          >
+            <ArrowUpToLine className="w-5 h-5" />
+          </button>
+          <span className="absolute right-full mr-3 top-1/2 -translate-y-1/2 px-2.5 py-1.5 bg-slate-800 text-white text-xs font-medium rounded-lg whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none shadow-lg">
+            返回顶部
+          </span>
         </div>
       </div>
     </div>

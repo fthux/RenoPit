@@ -122,7 +122,7 @@ export default function ProjectsPage() {
 
   return (
     <div className="min-h-screen bg-[#fcfcfd]">
-      <div className="max-w-5xl mx-auto px-6 py-14">
+      <div className="max-w-7xl mx-auto px-6 py-14">
 
         {/* Header */}
         <div className="mb-12">
