@@ -15,7 +15,7 @@ export default function LandingPage() {
   const [scrolled, setScrolled] = useState(false)
 
   useEffect(() => {
-    document.title = '装闭 - AI 装修陷阱检测'
+    document.title = '装闭 — 站在消费者一边的AI装修闭坑分析器'
   }, [])
 
   useEffect(() => {
@@ -78,9 +78,7 @@ export default function LandingPage() {
         }`}>
         <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
           <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white text-sm font-bold shadow-lg shadow-blue-500/20">
-              装
-            </div>
+            <img src="/favicon.svg" alt="装闭" className="w-8 h-8" />
             <span className="text-lg font-bold tracking-tight">
               <span className="text-white">装</span>
               <span className="text-blue-400">闭</span>
@@ -134,7 +132,7 @@ export default function LandingPage() {
           {/* Badge */}
           <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-white/5 border border-white/10 text-sm text-gray-400 mb-8 backdrop-blur-sm">
             <Sparkles className="w-3.5 h-3.5 text-blue-400" />
-            <span>站在消费者一边的 AI 装修检测</span>
+            <span>站在消费者一边的AI装修闭坑分析器</span>
           </div>
 
           {/* Title */}
@@ -307,8 +305,8 @@ export default function LandingPage() {
       <footer className="relative z-10 border-t border-white/5 py-6 md:py-8 px-4 md:px-6">
         <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-3 md:gap-4 text-center md:text-left">
           <div className="flex items-center gap-2 text-sm text-gray-500">
-            <div className="w-6 h-6 rounded bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white text-xs font-bold">装</div>
-            装闭 — 站在消费者一边的装修检测工具
+            <img src="/favicon.svg" alt="装闭" className="w-6 h-6" />
+            装闭 — 站在消费者一边的AI装修闭坑分析器
           </div>
           <p className="text-sm text-gray-600">
             Powered by AI · 不做中立审查，只做消费者代言人

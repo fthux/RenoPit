@@ -71,7 +71,7 @@ export default function CreateProjectPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-100">
-      <div className="max-w-5xl mx-auto px-6 py-12">
+      <div className="max-w-7xl mx-auto px-6 py-12">
         {/* Header - Clean and editorial */}
         <div className="mb-10">
           <h1 className="text-4xl md:text-5xl font-bold text-slate-800 tracking-tight">
@@ -178,7 +178,7 @@ export default function CreateProjectPage() {
             <button
               onClick={createProject}
               disabled={!canCreate}
-              className="px-8 py-3.5 bg-gradient-to-r from-blue-600 to-blue-500 text-white rounded-2xl text-base font-semibold hover:from-blue-700 hover:to-blue-600 disabled:opacity-40 flex items-center gap-2 transition-all shadow-xl shadow-blue-500/20 hover:shadow-blue-500/30 hover:scale-[1.02] active:scale-[0.98]"
+              className="text-sm px-8 py-3.5 bg-gradient-to-r from-blue-600 to-blue-500 text-white rounded-2xl text-base font-semibold hover:from-blue-700 hover:to-blue-600 disabled:opacity-40 flex items-center gap-2 transition-all shadow-xl shadow-blue-500/20 hover:shadow-blue-500/30 hover:scale-[1.02] active:scale-[0.98]"
             >
               {creating && <Loader2 className="w-5 h-5 animate-spin" />}
               {creating ? '创建中...' : '创建'}
@@ -195,7 +195,7 @@ export default function CreateProjectPage() {
         {/* Tip */}
         <div className="mt-6 text-center">
           <p className="text-xs text-slate-400">
-            上传后 AI 将自动分析设计图纸，检测周期通常为 1-3 分钟
+            上传后 AI 将自动分析设计图纸，检测周期通常为 1-10 分钟
           </p>
         </div>
       </div>
