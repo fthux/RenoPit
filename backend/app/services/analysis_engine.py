@@ -625,16 +625,21 @@ def run_document_analysis_sync(project_id: str, project_file_id: str) -> dict:
                         project_id, project_file_id,
                     )
                     from .llm_service import predict_extra_items
-                    loop = asyncio.get_event_loop()
-                    if loop.is_running():
-                        with concurrent.futures.ThreadPoolExecutor() as executor:
-                            pred_response = executor.submit(
-                                lambda: asyncio.run(
-                                    predict_extra_items(result_data)
-                                )
-                            ).result()
-                    else:
-                        pred_response = loop.run_until_complete(
+                    try:
+                        loop = asyncio.get_event_loop()
+                        if loop.is_running():
+                            with concurrent.futures.ThreadPoolExecutor() as executor:
+                                pred_response = executor.submit(
+                                    lambda: asyncio.run(
+                                        predict_extra_items(result_data)
+                                    )
+                                ).result()
+                        else:
+                            pred_response = loop.run_until_complete(
+                                predict_extra_items(result_data)
+                            )
+                    except RuntimeError:
+                        pred_response = asyncio.run(
                             predict_extra_items(result_data)
                         )
                     # 解析预测结果（使用 parse_json 处理 markdown 围栏等）
