@@ -36,10 +36,10 @@ class Settings(BaseSettings):
     def CELERY_RESULT_BACKEND(self) -> str:
         return f"redis://{self.REDIS_HOST}:{self.REDIS_PORT}/1"
 
-    # AI 模型
-    OPENAI_API_KEY: str = ""
-    GEMINI_API_KEY: str = ""
-    AI_MODEL_PROVIDER: str = "openai"
+    # LLM API (OpenAI SDK 兼容模式)
+    LLM_API_KEY: str = ""
+    LLM_BASE_URL: str = "https://api.openai.com/v1"
+    LLM_MODEL_NAME: str = "gpt-4o"
 
     # 文件上传限制
     MAX_UPLOAD_SIZE: int = 20_971_520  # 20 MB

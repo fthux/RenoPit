@@ -34,9 +34,9 @@ services:
       - DATABASE_URL=postgresql+psycopg://${DB_USER:-renovate}:${DB_PASSWORD:-renovate123}@db:5432/${DB_NAME:-renovate_db}
       - REDIS_HOST=redis
       - REDIS_PORT=6379
-      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
-      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
-      - AI_MODEL_PROVIDER=${AI_MODEL_PROVIDER:-openai}
+      - LLM_API_KEY=${LLM_API_KEY:-}
+      - LLM_BASE_URL=${LLM_BASE_URL:-https://api.openai.com/v1}
+      - LLM_MODEL_NAME=${LLM_MODEL_NAME:-gpt-4o}
       - MAX_UPLOAD_SIZE=${MAX_UPLOAD_SIZE:-20971520}
       - MAX_TEXT_FILE_SIZE=${MAX_TEXT_FILE_SIZE:-5242880}
       - MAX_INPUT_TEXT_LENGTH=${MAX_INPUT_TEXT_LENGTH:-2000}
@@ -61,9 +61,9 @@ services:
       - DATABASE_URL=postgresql+psycopg://${DB_USER:-renovate}:${DB_PASSWORD:-renovate123}@db:5432/${DB_NAME:-renovate_db}
       - REDIS_HOST=redis
       - REDIS_PORT=6379
-      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
-      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
-      - AI_MODEL_PROVIDER=${AI_MODEL_PROVIDER:-openai}
+      - LLM_API_KEY=${LLM_API_KEY:-}
+      - LLM_BASE_URL=${LLM_BASE_URL:-https://api.openai.com/v1}
+      - LLM_MODEL_NAME=${LLM_MODEL_NAME:-gpt-4o}
       - MAX_UPLOAD_SIZE=${MAX_UPLOAD_SIZE:-20971520}
       - MAX_TEXT_FILE_SIZE=${MAX_TEXT_FILE_SIZE:-5242880}
       - MAX_INPUT_TEXT_LENGTH=${MAX_INPUT_TEXT_LENGTH:-2000}

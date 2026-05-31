@@ -148,8 +148,8 @@ def run_analysis_sync(project_id: str) -> dict:
         db.flush()  # 获取 analysis.id
 
         logger.info(
-            "[AnalysisEngine] 开始 LLM 分析 analysis_id=%s, provider=%s",
-            analysis.id, settings.AI_MODEL_PROVIDER,
+            "[AnalysisEngine] 开始 LLM 分析 analysis_id=%s, model=%s",
+            analysis.id, settings.LLM_MODEL_NAME,
         )
 
         # Step 4: 构建系统提示词
