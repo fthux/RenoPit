@@ -87,7 +87,7 @@ export default function LandingPage() {
   ]
 
   return (
-    <div className="min-h-screen bg-[#0a0a0f] text-white overflow-hidden">
+    <div className="min-h-screen bg-[#0a0a0f] text-white">
 
       {/* Navbar */}
       <header className={`fixed top-0 left-0 right-0 z-50 transition-all duration-500 ${scrolled ? 'bg-[#0a0a0f]/80 backdrop-blur-xl shadow-[0_1px_0_0_rgba(255,255,255,0.05)] will-change-transform' : 'bg-transparent'
@@ -145,13 +145,13 @@ export default function LandingPage() {
       <section id="get-started" className="relative z-10 pt-24 md:pt-32 pb-16 md:pb-20 px-4 md:px-6">
         <div className="max-w-5xl mx-auto text-center">
           {/* Badge */}
-          <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-white/5 border border-white/10 text-sm text-gray-400 mb-8 backdrop-blur-sm">
+          <div className="scroll-reveal inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-white/5 border border-white/10 text-sm text-gray-400 mb-8 backdrop-blur-sm">
             <Sparkles className="w-3.5 h-3.5 text-white/60" />
             <span>站在消费者一边的AI装修闭坑分析器</span>
           </div>
 
           {/* Title */}
-          <h1 className="text-4xl md:text-7xl lg:text-8xl font-bold tracking-tight mb-6 leading-[1.1]">
+          <h1 className="scroll-reveal delay-100 text-4xl md:text-7xl lg:text-8xl font-bold tracking-tight mb-6 leading-[1.1]">
             <span className="text-white">装修</span>
             <span className="text-white">闭坑</span>
             <br />
@@ -161,14 +161,14 @@ export default function LandingPage() {
           </h1>
 
           {/* Subtitle */}
-          <p className="text-base md:text-xl text-gray-400 max-w-2xl mx-auto mb-10 leading-relaxed px-2">
+          <p className="scroll-reveal delay-200 text-base md:text-xl text-gray-400 max-w-2xl mx-auto mb-10 leading-relaxed px-2">
             上传你的设计图纸，AI 自动揪出那些只为增加预算的"垃圾设计"、
             <br className="hidden md:block" />
             过度装修、卫生死角、空间压迫感，揭露装修公司套路，给出更实用的方案。
           </p>
 
           {/* CTA Buttons */}
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-3 md:gap-4">
+          <div className="scroll-reveal delay-300 flex flex-col sm:flex-row items-center justify-center gap-3 md:gap-4">
             <button
               onClick={() => navigate('/projects/new')}
               className="group relative px-8 py-4 rounded-2xl bg-white text-[#0a0a0f] font-semibold text-lg transition-all duration-300 hover:scale-[1.02] active:scale-[0.98] shadow-2xl shadow-white/20 hover:shadow-white/30 cursor-pointer"
