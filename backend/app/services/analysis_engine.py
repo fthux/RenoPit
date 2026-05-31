@@ -109,6 +109,7 @@ def run_analysis_sync(project_id: str) -> dict:
 
         # 文件：提取文本
         extracted_texts: list[str] = []
+        filenames: list[str] = []
         for f in files:
             file_path = f.storage_path
             if os.path.exists(file_path):
@@ -118,6 +119,7 @@ def run_analysis_sync(project_id: str) -> dict:
                     text = parse_file_text(file_path, ext)
                     if text:
                         extracted_texts.append(text)
+                        filenames.append(f.original_filename)
                         # 更新数据库中的 extracted_text
                         f.extracted_text = text
                         db.add(f)
@@ -166,6 +168,7 @@ def run_analysis_sync(project_id: str) -> dict:
                 extracted_texts=extracted_texts if extracted_texts else None,
                 input_text=input_text,
                 system_prompt=system_prompt,
+                filenames=filenames if filenames else None,
             )
 
         try:

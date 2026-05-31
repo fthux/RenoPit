@@ -372,6 +372,7 @@ async def analyze_design(
     input_text: Optional[str] = None,
     enable_web_search: Optional[bool] = None,
     system_prompt: Optional[str] = None,
+    filenames: Optional[list[str]] = None,
 ) -> str:
     """调用多模态 LLM 分析设计图
 
@@ -384,6 +385,8 @@ async def analyze_design(
         input_text: 用户补充文本
         enable_web_search: 是否启用联网搜索
         system_prompt: 完整的系统提示词（由 prompt_builder 构建）
+        filenames: 上传文件的原始文件名列表，与 extracted_texts 一一对应。
+                   用于在 Prompt 中明确标注文件来源。
 
     Returns:
         LLM 响应文本（期望为 JSON 格式）
@@ -401,7 +404,7 @@ async def analyze_design(
         system_prompt = build_system_prompt(enable_web_search)
 
     # 构建用户消息
-    user_message = build_user_message(extracted_texts, input_text)
+    user_message = build_user_message(extracted_texts, input_text, filenames=filenames)
 
     has_images = len(images_base64) > 0
     has_texts = bool(
