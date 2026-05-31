@@ -22,6 +22,6 @@ celery_app.conf.update(
     task_track_started=True,
     task_acks_late=True,
     worker_prefetch_multiplier=1,
-    task_time_limit=600,  # 10 min hard limit (accommodates serial document analysis)
-    task_soft_time_limit=540,  # 9 min soft limit
+    task_time_limit=1200,  # 20 min hard limit (accommodates serial document analysis)
+    task_soft_time_limit=1200,  # 20 min soft limit
 )

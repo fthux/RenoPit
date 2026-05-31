@@ -43,9 +43,13 @@ def run_analysis_task(self, project_id: str):
     1. 更新项目状态为 analyzing
     2. 推送 SSE: status_change → analyzing
     3. 调用 analysis_engine.run_analysis_sync() 执行设计图分析
-    4. 设计图分析成功后，自动查询项目中的可分析文件（PDF/docx/txt/md），
+    4. 无论设计图分析成功还是失败，自动查询项目中的可分析文件（PDF/docx/txt/md），
        对每个文件自动调用 run_document_analysis_sync() 执行文档分析
-    5. 所有分析完成后，更新项目状态并推送 SSE
+       （文档分析独立于设计图分析，避免因图片上传导致纯文本 LLM 报错而阻断后续流程）
+    5. 多文档交叉核查（当有 ≥ 2 份文本文件时自动触发）
+    6. 根据分析结果推送 SSE + 更新项目状态
+       — 设计图分析成功 或 文档分析任一成功 → completed
+       — 均失败 → failed
 
     Args:
         project_id: 项目 ID
@@ -68,54 +72,59 @@ def run_analysis_task(self, project_id: str):
             "timestamp": datetime.utcnow().isoformat(),
         })
 
-        # Step 3: 执行设计图分析
+        # Step 3: 执行设计图分析（可能因纯文本 LLM 不支持图片而失败）
         logger.info(f"Starting design analysis for project={project_id}")
-        result = run_analysis_sync(project_id)
+        try:
+            result = run_analysis_sync(project_id)
+        except Exception as e:
+            logger.error("Design analysis failed: %s", str(e))
+            result = {"status": "failed", "error_message": str(e)}
 
-        # Step 4: 设计图分析成功后，自动执行文档分析（合同/报价单）
+        # Step 4: 自动执行文档分析（合同/报价单）
+        # 无论设计图分析成功还是失败，文档分析都应独立执行，
+        # 避免因图片上传导致纯文本 LLM 报错而阻断后续文档分析
         doc_results: list[dict] = []
-        if result.get("status") == "completed":
-            try:
-                # 查询项目中已提取文本的可分析文件
-                analyzable_files = db.query(ProjectFile).filter(
-                    ProjectFile.project_id == project_id,
-                    ProjectFile.extracted_text.isnot(None),
-                    ProjectFile.extracted_text != "",
-                    ProjectFile.file_type.in_(["pdf", "docx", "txt", "md"]),
-                ).all()
+        try:
+            # 查询项目中已提取文本的可分析文件
+            analyzable_files = db.query(ProjectFile).filter(
+                ProjectFile.project_id == project_id,
+                ProjectFile.extracted_text.isnot(None),
+                ProjectFile.extracted_text != "",
+                ProjectFile.file_type.in_(["pdf", "docx", "txt", "md"]),
+            ).all()
 
-                if analyzable_files:
-                    logger.info(
-                        "Found %d analyzable files for document analysis",
-                        len(analyzable_files),
-                    )
-                    for pf in analyzable_files:
-                        try:
-                            doc_result = run_document_analysis_sync(project_id, pf.id)
-                            doc_results.append(doc_result)
-                            logger.info(
-                                "Document analysis for file %s: %s",
-                                pf.id, doc_result.get("status"),
-                            )
-                        except Exception as e:
-                            logger.error(
-                                "Document analysis failed for file %s: %s",
-                                pf.id, str(e),
-                            )
-                            doc_results.append({
-                                "status": "failed",
-                                "project_file_id": pf.id,
-                                "error_message": str(e),
-                            })
-            except Exception as e:
-                logger.error(
-                    "Error querying project files for document analysis: %s",
-                    str(e),
+            if analyzable_files:
+                logger.info(
+                    "Found %d analyzable files for document analysis",
+                    len(analyzable_files),
                 )
+                for pf in analyzable_files:
+                    try:
+                        doc_result = run_document_analysis_sync(project_id, pf.id)
+                        doc_results.append(doc_result)
+                        logger.info(
+                            "Document analysis for file %s: %s",
+                            pf.id, doc_result.get("status"),
+                        )
+                    except Exception as e:
+                        logger.error(
+                            "Document analysis failed for file %s: %s",
+                            pf.id, str(e),
+                        )
+                        doc_results.append({
+                            "status": "failed",
+                            "project_file_id": pf.id,
+                            "error_message": str(e),
+                        })
+        except Exception as e:
+            logger.error(
+                "Error querying project files for document analysis: %s",
+                str(e),
+            )
 
         # Step 5: 多文档交叉核查（当有 ≥ 2 份文本文件时自动触发）
         cross_check_result: Optional[dict] = None
-        if result.get("status") == "completed" and len(doc_results) >= 2:
+        if len(doc_results) >= 2:
             try:
                 from ..services.analysis_engine import run_cross_check_sync
                 logger.info(
@@ -134,11 +143,19 @@ def run_analysis_task(self, project_id: str):
                 )
 
         # Step 6: 根据结果推送 SSE + 更新项目状态
-        if result.get("status") == "completed":
+        design_ok = result.get("status") == "completed"
+        doc_ok_count = sum(1 for r in doc_results if r.get("status") == "completed")
+        doc_total = len(doc_results)
+
+        # 只要设计图分析或文档分析任一成功，项目即视为完成
+        if design_ok or doc_ok_count > 0:
+            # 统计设计图分析结果
+            design_message = f"发现 {result.get('problems_count', 0)} 个问题" if design_ok else "设计图分析失败（已跳过）"
+
             # 统计文档分析结果
-            doc_completed = sum(1 for r in doc_results if r.get("status") == "completed")
-            doc_total = len(doc_results)
-            doc_message = f"，合同/报价单分析完成 {doc_completed}/{doc_total}" if doc_total > 0 else ""
+            doc_message = ""
+            if doc_total > 0:
+                doc_message = f"，合同/报价单分析完成 {doc_ok_count}/{doc_total}"
 
             # 交叉核查信息
             cross_check_message = ""
@@ -150,16 +167,24 @@ def run_analysis_task(self, project_id: str):
             _publish_sse(project_id, "status_change", {
                 "project_id": project_id,
                 "status": "completed",
-                "message": f"分析完成，发现 {result.get('problems_count', 0)} 个问题{doc_message}{cross_check_message}",
-                "problems_count": result.get("problems_count", 0),
+                "message": f"分析完成：{design_message}{doc_message}{cross_check_message}",
+                "problems_count": result.get("problems_count", 0) + doc_ok_count,
                 "timestamp": datetime.utcnow().isoformat(),
             })
         else:
+            # 设计图分析和文档分析均失败
+            error_details = []
+            if not design_ok:
+                error_details.append(f"设计图: {result.get('error_message', '未知错误')}")
+            if doc_total > 0 and doc_ok_count == 0:
+                error_details.append(f"文档分析: {doc_total} 个文件均失败")
+            detail_str = "；".join(error_details)
+
             _update_project_status(db, project_id, "failed")
             _publish_sse(project_id, "status_change", {
                 "project_id": project_id,
                 "status": "failed",
-                "message": result.get("error_message", "分析失败"),
+                "message": f"分析失败：{detail_str}" if detail_str else "分析失败",
                 "timestamp": datetime.utcnow().isoformat(),
             })
 

@@ -132,6 +132,10 @@ def run_analysis_sync(project_id: str) -> dict:
             project_id, len(images_base64), len(extracted_texts),
         )
 
+        # 持久化 extracted_text，避免后续 LLM 调用失败时 db.rollback() 导致
+        # tasks/analysis.py 的后续文档分析步骤（Step 4）查不到可分析文件
+        db.commit()
+
         # Step 3: 输入校验
         _validate_input(
             has_images=len(images_base64) > 0,
@@ -156,40 +160,31 @@ def run_analysis_sync(project_id: str) -> dict:
         system_prompt = build_system_prompt(settings.ENABLE_WEB_SEARCH)
 
         # Step 5: 调用 LLM（同步包装异步调用）
-        try:
-            loop = asyncio.get_event_loop()
-            if loop.is_running():
-                # 在已运行的事件循环中（如 Celery 使用了 asyncio）
-                with concurrent.futures.ThreadPoolExecutor() as executor:
-                    llm_response = executor.submit(
-                        lambda: asyncio.run(
-                            analyze_design(
-                                images_base64=images_base64,
-                                extracted_texts=extracted_texts if extracted_texts else None,
-                                input_text=input_text,
-                                system_prompt=system_prompt,
-                            )
-                        )
-                    ).result()
-            else:
-                llm_response = loop.run_until_complete(
-                    analyze_design(
-                        images_base64=images_base64,
-                        extracted_texts=extracted_texts if extracted_texts else None,
-                        input_text=input_text,
-                        system_prompt=system_prompt,
-                    )
-                )
-        except RuntimeError:
-            # 没有事件循环
-            llm_response = asyncio.run(
-                analyze_design(
-                    images_base64=images_base64,
-                    extracted_texts=extracted_texts if extracted_texts else None,
-                    input_text=input_text,
-                    system_prompt=system_prompt,
-                )
+        def _call_analyze_design():
+            return analyze_design(
+                images_base64=images_base64,
+                extracted_texts=extracted_texts if extracted_texts else None,
+                input_text=input_text,
+                system_prompt=system_prompt,
             )
+
+        try:
+            llm_response = asyncio.run(_call_analyze_design())
+        except RuntimeError as e:
+            # 仅当 "already running event loop" 时才走线程池回退；
+            # LLM 调用失败应向上传播，不再被此 except 吞掉
+            error_msg = str(e).lower()
+            if "already running" in error_msg or "cannot be called from a running event loop" in error_msg:
+                loop = asyncio.get_event_loop()
+                if loop.is_running():
+                    with concurrent.futures.ThreadPoolExecutor() as executor:
+                        llm_response = executor.submit(
+                            lambda: asyncio.run(_call_analyze_design())
+                        ).result()
+                else:
+                    llm_response = loop.run_until_complete(_call_analyze_design())
+            else:
+                raise
 
         logger.info(
             "[AnalysisEngine] LLM 响应长度=%d",

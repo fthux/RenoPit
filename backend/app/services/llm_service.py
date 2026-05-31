@@ -26,6 +26,11 @@ BASE_DELAY = 2  # 秒，指数退避：2s → 4s
 TIMEOUT_SECONDS = 180
 
 
+class ModelNotMultimodalError(ValueError):
+    """模型不支持多模态图片输入的专用异常——调用方应直接回退到纯文本路径，不要重试"""
+    pass
+
+
 # ============================================================
 # OpenAI SDK 客户端（延迟初始化）
 # ============================================================
@@ -83,7 +88,8 @@ async def _call_llm(
         LLM 响应文本
 
     Raises:
-        Exception: API 调用失败时的详细信息
+        ModelNotMultimodalError: 模型不支持图片输入，调用方应回退到纯文本
+        Exception: 其他 API 调用失败的详细信息
     """
     client = _get_openai_client()
 
@@ -167,7 +173,21 @@ async def _call_llm(
             )
 
         return result
+    except ModelNotMultimodalError:
+        # 如果是 _retry_with_backoff 外层已经捕获并重新抛出的，直接透传
+        raise
     except Exception as e:
+        # 检测模型是否不支持图片输入（400 错误包含 "unknown variant image_url"）
+        error_str = str(e)
+        if "unknown variant `image_url`" in error_str or 'unknown variant "image_url"' in error_str:
+            logger.warning(
+                "[LLM] 模型 %s 不支持多模态图片输入，将回退到纯文本路径",
+                settings.LLM_MODEL_NAME,
+            )
+            raise ModelNotMultimodalError(
+                f"模型 {settings.LLM_MODEL_NAME} 不支持多模态图片输入"
+            ) from e
+
         logger.error(
             "[LLM] API 调用异常: %s (type=%s)",
             str(e), type(e).__name__,
@@ -224,6 +244,7 @@ async def _retry_with_backoff(
         LLM 响应文本
 
     Raises:
+        ModelNotMultimodalError: 模型不支持图片——不重试，直接传播
         RuntimeError: 所有重试均失败
     """
     last_error = None
@@ -255,6 +276,14 @@ async def _retry_with_backoff(
 
             # 空响应也视为失败
             raise ValueError(f"{model_name} 返回空响应")
+
+        except ModelNotMultimodalError:
+            # 模型不支持图片，不重试，直接传播给上层回退
+            logger.info(
+                "[LLM] %s 不支持多模态（attempt %d），跳过重试，直接回退纯文本",
+                model_name, attempt + 1,
+            )
+            raise
 
         except asyncio.TimeoutError:
             last_error = TimeoutError(f"{model_name} 调用超时（{TIMEOUT_SECONDS}s）")
@@ -346,6 +375,9 @@ async def analyze_design(
 ) -> str:
     """调用多模态 LLM 分析设计图
 
+    当多模态调用失败时（如 DeepSeek 等纯文本模型不支持图片输入），
+    自动回退到纯文本路径，基于 uploaded file texts 和 user input text 分析。
+
     Args:
         images_base64: Base64 编码的图片列表
         extracted_texts: 上传文件提取的文本列表
@@ -357,7 +389,7 @@ async def analyze_design(
         LLM 响应文本（期望为 JSON 格式）
 
     Raises:
-        RuntimeError: 所有重试均失败
+        RuntimeError: 所有重试（含回退路径）均失败
     """
     from .prompt_builder import build_system_prompt, build_user_message
 
@@ -371,6 +403,12 @@ async def analyze_design(
     # 构建用户消息
     user_message = build_user_message(extracted_texts, input_text)
 
+    has_images = len(images_base64) > 0
+    has_texts = bool(
+        (extracted_texts and any(t and t.strip() for t in extracted_texts))
+        or (input_text and input_text.strip())
+    )
+
     logger.info(
         "[LLM] analyze_design 开始: images=%d, extracted_texts=%d, input_text=%s, web_search=%s, system_prompt_len=%d, model=%s",
         len(images_base64),
@@ -381,13 +419,56 @@ async def analyze_design(
         settings.LLM_MODEL_NAME,
     )
 
-    return await _retry_with_backoff(
-        _call_llm,
+    # 先尝试多模态调用（含图片）
+    if has_images:
+        try:
+            return await _retry_with_backoff(
+                _call_llm,
+                settings.LLM_MODEL_NAME,
+                system_prompt,
+                user_message,
+                images_base64,
+                enable_web_search,
+            )
+        except ModelNotMultimodalError as e:
+            # 模型不支持图片输入，不重试直接回退到纯文本
+            logger.warning(
+                "[LLM] %s — 直接回退到纯文本路径（跳过重试）",
+                str(e),
+            )
+            if not has_texts:
+                raise RuntimeError(
+                    f"模型 {settings.LLM_MODEL_NAME} 不支持图片输入，且无可用的文本内容进行回退分析"
+                ) from e
+            logger.info(
+                "[LLM] 回退到纯文本路径: 使用 extracted_texts/input_text 进行分析"
+            )
+        except Exception as e:
+            # 其他类型的失败（网络错误等），保留原有回退逻辑
+            logger.warning(
+                "[LLM] 多模态调用失败（可能是纯文本模型不支持图片）: %s",
+                str(e),
+            )
+            if not has_texts:
+                raise RuntimeError(
+                    f"图片分析失败且无可用的文本内容进行回退分析: {str(e)}"
+                ) from e
+            logger.info(
+                "[LLM] 回退到纯文本路径: 使用 extracted_texts/input_text 进行分析"
+            )
+    elif not has_texts:
+        raise RuntimeError("analyze_design 调用缺少内容：既无图片也无文本")
+
+    # 纯文本路径（无图片或图片调用失败后的回退）
+    logger.info(
+        "[LLM] 执行纯文本分析路径 (has_images=%s, fallback=%s)",
+        has_images, has_images and has_texts,
+    )
+    return await _retry_with_backoff_text(
+        _call_llm_text,
         settings.LLM_MODEL_NAME,
         system_prompt,
         user_message,
-        images_base64,
-        enable_web_search,
     )
 
 
