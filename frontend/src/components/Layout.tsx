@@ -24,7 +24,7 @@ export default function Layout() {
             <Link to="/" className="flex items-center gap-2.5 no-underline group">
               <img src="/favicon.svg" alt="装闭" className="w-8 h-8 group-hover:scale-105 transition-transform duration-300" />
               <span className="text-lg font-bold tracking-tight text-slate-800">
-                装<span className="text-blue-500">闭</span>
+                装闭
               </span>
             </Link>
             <nav className="flex items-center gap-1">
@@ -62,7 +62,7 @@ export default function Layout() {
 
         <footer className="bg-white/80 backdrop-blur-xl border-t border-slate-200/80 py-6">
           <div className="max-w-6xl mx-auto px-4 text-center text-sm text-slate-400">
-            装闭 — 站在消费者一边的AI装修闭坑分析器 · Powered by AI · 仅供参考，最终以专业设计师意见为准
+            装闭 — 站在消费者一边的AI装修闭坑分析器 · Powered by AI · 不做中立审查，只做消费者代言人
           </div>
         </footer>
       </div>

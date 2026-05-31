@@ -10,9 +10,31 @@ function GitHubIcon({ className }: { className?: string }) {
   )
 }
 
+function useScrollReveal() {
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            entry.target.classList.add('revealed')
+          }
+        })
+      },
+      { threshold: 0.1, rootMargin: '0px 0px -40px 0px' }
+    )
+
+    const elements = document.querySelectorAll('.scroll-reveal')
+    elements.forEach((el) => observer.observe(el))
+
+    return () => observer.disconnect()
+  }, [])
+}
+
 export default function LandingPage() {
   const navigate = useNavigate()
   const [scrolled, setScrolled] = useState(false)
+
+  useScrollReveal()
 
   useEffect(() => {
     document.title = '装闭 — 站在消费者一边的AI装修闭坑分析器'
@@ -66,22 +88,15 @@ export default function LandingPage() {
 
   return (
     <div className="min-h-screen bg-[#0a0a0f] text-white overflow-hidden">
-      {/* Animated background orbs */}
-      <div className="fixed inset-0 pointer-events-none z-0">
-        <div className="absolute top-1/4 left-1/4 w-[500px] h-[500px] rounded-full bg-gradient-to-br from-blue-500/10 via-purple-500/8 to-transparent blur-[100px] animate-pulse-slow" />
-        <div className="absolute bottom-1/4 right-1/4 w-[400px] h-[400px] rounded-full bg-gradient-to-tl from-cyan-500/10 via-blue-500/8 to-transparent blur-[100px] animate-pulse-slow animation-delay-2000" />
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[400px] rounded-full bg-gradient-to-r from-indigo-500/8 via-purple-500/5 to-transparent blur-[120px]" />
-      </div>
 
       {/* Navbar */}
-      <header className={`fixed top-0 left-0 right-0 z-50 transition-all duration-500 ${scrolled ? 'bg-[#0a0a0f]/80 backdrop-blur-xl border-b border-white/5' : 'bg-transparent'
+      <header className={`fixed top-0 left-0 right-0 z-50 transition-all duration-500 ${scrolled ? 'bg-[#0a0a0f]/80 backdrop-blur-xl shadow-[0_1px_0_0_rgba(255,255,255,0.05)] will-change-transform' : 'bg-transparent'
         }`}>
         <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
           <div className="flex items-center gap-2.5">
             <img src="/favicon.svg" alt="装闭" className="w-8 h-8" />
             <span className="text-lg font-bold tracking-tight">
-              <span className="text-white">装</span>
-              <span className="text-blue-400">闭</span>
+              <span className="text-white">装闭</span>
             </span>
           </div>
           {/* Centered nav links - visible on md+ screens */}
@@ -131,17 +146,17 @@ export default function LandingPage() {
         <div className="max-w-5xl mx-auto text-center">
           {/* Badge */}
           <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-white/5 border border-white/10 text-sm text-gray-400 mb-8 backdrop-blur-sm">
-            <Sparkles className="w-3.5 h-3.5 text-blue-400" />
+            <Sparkles className="w-3.5 h-3.5 text-white/60" />
             <span>站在消费者一边的AI装修闭坑分析器</span>
           </div>
 
           {/* Title */}
           <h1 className="text-4xl md:text-7xl lg:text-8xl font-bold tracking-tight mb-6 leading-[1.1]">
             <span className="text-white">装修</span>
-            <span className="bg-gradient-to-r from-blue-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">闭坑</span>
+            <span className="text-white">闭坑</span>
             <br />
             <span className="text-xl md:text-4xl lg:text-5xl text-gray-400 font-normal">
-              用 <span className="text-white font-bold">"装闭"</span> 就够了
+              用 <span className="text-white">"</span><ruby className="text-white font-bold">装<rt className="text-[0.4em] font-normal tracking-wide">zhuāng</rt></ruby><ruby className="text-white font-bold">闭<rt className="text-[0.4em] font-normal tracking-wide">bì</rt></ruby><span className="text-white">"</span> 就够了
             </span>
           </h1>
 
@@ -177,9 +192,9 @@ export default function LandingPage() {
       {/* Features Section */}
       <section id="introduction" className="relative z-10 py-16 md:py-24 px-4 md:px-6">
         <div className="max-w-6xl mx-auto">
-          <div className="text-center mb-12 md:mb-16">
+          <div className="scroll-reveal text-center mb-12 md:mb-16">
             <h2 className="text-2xl md:text-5xl font-bold mb-4">
-              <span className="bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">
+              <span className="text-white">
                 揭露套路，回归实用
               </span>
             </h2>
@@ -194,13 +209,14 @@ export default function LandingPage() {
               return (
                 <div
                   key={i}
-                  className="group relative p-6 rounded-2xl border border-white/5 bg-white/[0.03] hover:bg-white/[0.06] hover:border-white/10 transition-all duration-500"
+                  className="scroll-reveal group relative p-6 rounded-2xl border border-white/5 bg-white/[0.03] hover:bg-white/[0.06] hover:border-white/10 transition-all duration-500"
+                  style={{ transitionDelay: `${i * 100}ms` }}
                 >
-                  <div className="absolute inset-0 rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-500 bg-gradient-to-br from-blue-500/5 via-transparent to-purple-500/5 pointer-events-none" />
+                  <div className="absolute inset-0 rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-500 bg-white/[0.03] pointer-events-none" />
 
                   <div className="relative z-10">
-                    <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500/20 to-purple-500/20 border border-white/5 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform duration-500">
-                      <Icon className="w-5 h-5 text-blue-400" />
+                    <div className="w-10 h-10 rounded-xl bg-white/10 border border-white/5 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform duration-500">
+                      <Icon className="w-5 h-5 text-white/60" />
                     </div>
                     <h3 className="text-lg font-semibold text-white mb-2">{feat.title}</h3>
                     <p className="text-sm text-gray-400 leading-relaxed">{feat.desc}</p>
@@ -215,7 +231,7 @@ export default function LandingPage() {
       {/* How it works */}
       <section className="relative z-10 py-16 md:py-24 px-4 md:px-6 border-t border-white/5">
         <div className="max-w-5xl mx-auto">
-          <div className="text-center mb-12 md:mb-16">
+          <div className="scroll-reveal text-center mb-12 md:mb-16">
             <h2 className="text-2xl md:text-5xl font-bold mb-4 text-white">
               三步揪出垃圾设计
             </h2>
@@ -224,13 +240,13 @@ export default function LandingPage() {
 
           <div className="grid sm:grid-cols-3 gap-6 md:gap-8">
             {[
-              { step: '01', title: '上传图纸', desc: '上传你的设计图纸（PDF/图片）、现场照片，或直接描述你的装修需求', color: 'from-blue-500/20 to-blue-600/10' },
-              { step: '02', title: 'AI 逐项审查', desc: 'AI 对照本地知识库和行业标准，逐项筛查卫生死角、空间压迫、增项陷阱等', color: 'from-purple-500/20 to-purple-600/10' },
-              { step: '03', title: '拿到避坑报告', desc: '获得详细的检测报告与综合评分，每个问题都附带替代方案，支持下载 PDF', color: 'from-pink-500/20 to-pink-600/10' },
-            ].map((item) => (
-              <div key={item.step} className="text-center">
-                <div className={`w-16 h-16 rounded-full bg-gradient-to-br ${item.color} border border-white/5 flex items-center justify-center mx-auto mb-5`}>
-                  <span className="text-2xl font-bold bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">{item.step}</span>
+              { step: '01', title: '上传图纸', desc: '上传你的设计图纸（PDF/图片）、现场照片，或直接描述你的装修需求' },
+              { step: '02', title: 'AI 逐项审查', desc: 'AI 对照本地知识库和行业标准，逐项筛查卫生死角、空间压迫、增项陷阱等' },
+              { step: '03', title: '拿到避坑报告', desc: '获得详细的检测报告与综合评分，每个问题都附带替代方案，支持下载 PDF' },
+            ].map((item, i) => (
+              <div key={item.step} className="scroll-reveal text-center" style={{ transitionDelay: `${i * 200}ms` }}>
+                <div className="w-16 h-16 rounded-full bg-white/10 border border-white/5 flex items-center justify-center mx-auto mb-5">
+                  <span className="text-2xl font-bold text-white">{item.step}</span>
                 </div>
                 <h3 className="text-lg font-semibold text-white mb-2">{item.title}</h3>
                 <p className="text-sm text-gray-400 max-w-xs mx-auto">{item.desc}</p>
@@ -243,9 +259,9 @@ export default function LandingPage() {
       {/* About Us Section */}
       <section id="about-us" className="relative z-10 py-16 md:py-24 px-4 md:px-6 border-t border-white/5">
         <div className="max-w-5xl mx-auto">
-          <div className="text-center mb-12 md:mb-16">
+          <div className="scroll-reveal text-center mb-12 md:mb-16">
             <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-white/5 border border-white/10 text-sm text-gray-400 mb-6 backdrop-blur-sm">
-              <Users className="w-3.5 h-3.5 text-blue-400" />
+              <Users className="w-3.5 h-3.5 text-white/60" />
               <span>关于我们</span>
             </div>
             <h2 className="text-2xl md:text-5xl font-bold mb-4 text-white">
@@ -259,9 +275,9 @@ export default function LandingPage() {
           </div>
 
           <div className="grid sm:grid-cols-3 gap-4 md:gap-6">
-            <div className="group p-6 rounded-2xl border border-white/5 bg-white/[0.03] hover:bg-white/[0.06] hover:border-white/10 transition-all duration-500">
-              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500/20 to-blue-600/10 border border-white/5 flex items-center justify-center mb-4">
-                <Target className="w-5 h-5 text-blue-400" />
+            <div className="scroll-reveal delay-100 group p-6 rounded-2xl border border-white/5 bg-white/[0.03] hover:bg-white/[0.06] hover:border-white/10 transition-all duration-500">
+              <div className="w-10 h-10 rounded-xl bg-white/10 border border-white/5 flex items-center justify-center mb-4">
+                <Target className="w-5 h-5 text-white/60" />
               </div>
               <h3 className="text-lg font-semibold text-white mb-2">只站消费者</h3>
               <p className="text-sm text-gray-400 leading-relaxed">
@@ -270,9 +286,9 @@ export default function LandingPage() {
               </p>
             </div>
 
-            <div className="group p-6 rounded-2xl border border-white/5 bg-white/[0.03] hover:bg-white/[0.06] hover:border-white/10 transition-all duration-500">
-              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-purple-500/20 to-purple-600/10 border border-white/5 flex items-center justify-center mb-4">
-                <Eye className="w-5 h-5 text-purple-400" />
+            <div className="scroll-reveal delay-200 group p-6 rounded-2xl border border-white/5 bg-white/[0.03] hover:bg-white/[0.06] hover:border-white/10 transition-all duration-500">
+              <div className="w-10 h-10 rounded-xl bg-white/10 border border-white/5 flex items-center justify-center mb-4">
+                <Eye className="w-5 h-5 text-white/60" />
               </div>
               <h3 className="text-lg font-semibold text-white mb-2">揭露套路</h3>
               <p className="text-sm text-gray-400 leading-relaxed">
@@ -281,9 +297,9 @@ export default function LandingPage() {
               </p>
             </div>
 
-            <div className="group p-6 rounded-2xl border border-white/5 bg-white/[0.03] hover:bg-white/[0.06] hover:border-white/10 transition-all duration-500">
-              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-pink-500/20 to-pink-600/10 border border-white/5 flex items-center justify-center mb-4">
-                <Quote className="w-5 h-5 text-pink-400" />
+            <div className="scroll-reveal delay-300 group p-6 rounded-2xl border border-white/5 bg-white/[0.03] hover:bg-white/[0.06] hover:border-white/10 transition-all duration-500">
+              <div className="w-10 h-10 rounded-xl bg-white/10 border border-white/5 flex items-center justify-center mb-4">
+                <Quote className="w-5 h-5 text-white/60" />
               </div>
               <h3 className="text-lg font-semibold text-white mb-2">实用至上</h3>
               <p className="text-sm text-gray-400 leading-relaxed">
@@ -293,7 +309,7 @@ export default function LandingPage() {
             </div>
           </div>
 
-          <div className="mt-12 text-center">
+          <div className="scroll-reveal mt-12 text-center">
             <div className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-white/5 border border-white/10 text-gray-400 text-sm backdrop-blur-sm">
               <span>装修闭坑，用"装闭"就够了</span>
             </div>

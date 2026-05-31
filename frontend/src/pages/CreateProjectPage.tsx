@@ -73,12 +73,11 @@ export default function CreateProjectPage() {
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-100">
       <div className="max-w-7xl mx-auto px-6 py-12">
         {/* Header - Clean and editorial */}
-        <div className="mb-10">
-          <h1 className="text-4xl md:text-5xl font-bold text-slate-800 tracking-tight">
+        <div className="mb-8">
+          <h1 className="text-3xl font-bold text-slate-800 tracking-tight">
             新建项目
           </h1>
-          <div className="mt-3 h-1 w-16 rounded-full bg-gradient-to-r from-blue-500 to-purple-600" />
-          <p className="text-slate-500 text-lg mt-4 leading-relaxed">
+          <p className="text-slate-500 text-sm mt-4 leading-relaxed">
             上传你的设计图纸、现场照片，或直接描述你的装修需求。AI 会逐项审查，揪出那些不合理的设计和隐藏的陷阱。
           </p>
         </div>
