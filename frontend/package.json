@@ -9,7 +9,8 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "demo-dev": "cross-env VITE_DEMO_MODE=true npm run dev",
-    "demo-build": "cross-env VITE_DEMO_MODE=true npm run build"
+    "demo-build": "cross-env VITE_DEMO_MODE=true npm run build",
+    "demo-zip": "node -e \"require('child_process').execSync('npx bestzip ../dist.zip *', {cwd: 'dist', stdio: 'inherit'})\""
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.3.0",
@@ -25,6 +26,7 @@
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.1",
+    "bestzip": "^3.0.1",
     "cross-env": "^10.1.0",
     "eslint": "^10.3.0",
     "eslint-plugin-react-hooks": "^7.1.1",
