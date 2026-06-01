@@ -1,5 +1,5 @@
 """
-RenovationPitfallAnalyzer — FastAPI Application
+RenoPit — FastAPI Application
 装修避坑分析器 后端入口
 """
 
@@ -10,7 +10,7 @@ from .core.database import engine, Base
 from .api import projects_router
 
 app = FastAPI(
-    title="RenovationPitfallAnalyzer",
+    title="RenoPit",
     description="装修设计图避坑分析器 API",
     version="0.1.0",
 )
@@ -38,4 +38,4 @@ async def startup():
 
 @app.get("/health")
 async def health_check():
-    return {"status": "ok", "service": "RenovationPitfallAnalyzer"}
+    return {"status": "ok", "service": "RenoPit"}

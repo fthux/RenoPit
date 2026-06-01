@@ -124,14 +124,14 @@ export default function LandingPage() {
           {/* Right side action buttons */}
           <div className="flex items-center gap-2 md:gap-3">
             <button
-              onClick={() => window.open('https://deepwiki.com/fthux/RenovationPitfallAnalyzer', '_blank')}
+              onClick={() => window.open('https://deepwiki.com/fthux/RenoPit', '_blank')}
               className="text-sm text-gray-400 hover:text-white transition-colors px-3 md:px-4 py-2 cursor-pointer inline-flex items-center gap-1.5"
             >
               <BookOpen className="w-4 h-4" />
               <span className="hidden sm:inline">文档</span>
             </button>
             <button
-              onClick={() => window.open('https://github.com/fthux/RenovationPitfallAnalyzer', '_blank')}
+              onClick={() => window.open('https://github.com/fthux/RenoPit', '_blank')}
               className="text-sm font-medium px-4 md:px-5 py-2 rounded-xl bg-white text-[#0a0a0f] hover:bg-gray-200 transition-all duration-300 shadow-lg shadow-white/10 hover:shadow-white/20 hover:scale-[1.02] active:scale-[0.98] cursor-pointer inline-flex items-center gap-1.5"
             >
               <GitHubIcon className="w-4 h-4" />
@@ -179,7 +179,7 @@ export default function LandingPage() {
               </span>
             </button>
             <button
-              onClick={() => window.open('https://github.com/fthux/RenovationPitfallAnalyzer', '_blank')}
+              onClick={() => window.open('https://github.com/fthux/RenoPit', '_blank')}
               className="px-8 py-4 rounded-2xl border border-white/10 text-gray-300 font-medium text-lg transition-all duration-300 hover:bg-white/5 hover:border-white/20 hover:text-white backdrop-blur-sm cursor-pointer inline-flex items-center gap-2"
             >
               <Star className="w-5 h-5 text-yellow-400" />
