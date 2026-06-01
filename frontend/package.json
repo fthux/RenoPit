@@ -7,7 +7,9 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "demo-dev": "VITE_DEMO_MODE=true npm run dev",
+    "demo-build": "VITE_DEMO_MODE=true npm run build"
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.3.0",

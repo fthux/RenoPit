@@ -4,6 +4,8 @@ import { ArrowLeft, Loader2, AlertTriangle, Zap, AlertCircle, Info, Download, Ch
 import type { AnalysisResult, PitfallItem, PitfallSeverity } from '../types'
 import ExtraPredictionPanel from '../components/ExtraPredictionPanel'
 import CrossCheckPanel from '../components/CrossCheckPanel'
+import { useToast } from '../components/Toast'
+import demoPdf from '../demo/renopit-report-4256c690.pdf'
 
 const API = '/api'
 
@@ -24,25 +26,48 @@ export default function AnalysisPage() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [showFloatingButtons, setShowFloatingButtons] = useState(false)
   const observerRef = useRef<IntersectionObserver | null>(null)
+  const { showToast } = useToast()
 
   const handleDownloadPdf = useCallback(async () => {
     if (!projectId) return
     setDownloading(true)
     try {
-      const res = await fetch(`/api/projects/${projectId}/report/pdf`)
-      if (!res.ok) throw new Error('下载失败')
-      const blob = await res.blob()
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = `renovation-report-${projectId.slice(0, 8)}.pdf`
-      document.body.appendChild(a)
-      a.click()
-      document.body.removeChild(a)
-      URL.revokeObjectURL(url)
+      const isDemo =
+        import.meta.env.VITE_DEMO_MODE === 'true' ||
+        import.meta.env.VITE_DEMO_MODE === '1'
+
+      if (isDemo) {
+        // In demo mode, download the bundled demo PDF directly
+        const res = await fetch(demoPdf as unknown as string)
+        const blob = await res.blob()
+        const url = URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url
+        a.download = 'renopit-report-4256c690.pdf'
+        document.body.appendChild(a)
+        a.click()
+        document.body.removeChild(a)
+        URL.revokeObjectURL(url)
+      } else {
+        const res = await fetch(`/api/projects/${projectId}/report/pdf`)
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}))
+          showToast('error', errData.detail || 'PDF 下载失败，请稍后重试')
+          return
+        }
+        const blob = await res.blob()
+        const url = URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url
+        a.download = `renopit-report-${projectId.slice(0, 8)}.pdf`
+        document.body.appendChild(a)
+        a.click()
+        document.body.removeChild(a)
+        URL.revokeObjectURL(url)
+      }
     } catch (e) {
       console.error('PDF download failed:', e)
-      alert('PDF 下载失败，请稍后重试')
+      showToast('error', 'PDF 下载失败，请稍后重试')
     } finally {
       setDownloading(false)
     }

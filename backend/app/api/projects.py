@@ -944,7 +944,7 @@ async def download_report_pdf(project_id: str, request: Request, db: Session = D
         content=pdf_bytes,
         media_type="application/pdf",
         headers={
-            "Content-Disposition": f"attachment; filename=renovation-report-{project_id[:8]}.pdf",
+            "Content-Disposition": f"attachment; filename=renopit-report-{project_id[:8]}.pdf",
         },
     )
 

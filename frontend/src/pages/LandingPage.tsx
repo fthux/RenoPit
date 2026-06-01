@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Shield, Sparkles, Zap, ArrowRight, Layers, BarChart3, FileText, Target, Users, Quote, Eye, BookOpen, Star } from 'lucide-react'
+import { Shield, Sparkles, Zap, ArrowRight, Layers, BarChart3, FileText, Target, Users, Quote, Eye, BookOpen, Star, PlayCircle } from 'lucide-react'
+import DemoBanner from '../components/DemoBanner'
 
 function GitHubIcon({ className }: { className?: string }) {
   return (
@@ -33,6 +34,9 @@ function useScrollReveal() {
 export default function LandingPage() {
   const navigate = useNavigate()
   const [scrolled, setScrolled] = useState(false)
+  const isDemo =
+    import.meta.env.VITE_DEMO_MODE === 'true' ||
+    import.meta.env.VITE_DEMO_MODE === '1'
 
   useScrollReveal()
 
@@ -88,10 +92,11 @@ export default function LandingPage() {
 
   return (
     <div className="min-h-screen bg-[#0a0a0f] text-white">
+      <DemoBanner />
 
       {/* Navbar */}
-      <header className={`fixed top-0 left-0 right-0 z-50 transition-all duration-500 ${scrolled ? 'bg-[#0a0a0f]/80 backdrop-blur-xl shadow-[0_1px_0_0_rgba(255,255,255,0.05)] will-change-transform' : 'bg-transparent'
-        }`}>
+      <header className={`fixed left-0 right-0 z-50 transition-all duration-500 ${scrolled ? 'bg-[#0a0a0f]/80 backdrop-blur-xl shadow-[0_1px_0_0_rgba(255,255,255,0.05)] will-change-transform' : 'bg-transparent'
+        }`} style={{ top: isDemo ? '42px' : '0' }}>
         <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
           <div className="flex items-center gap-2.5">
             <img src="/favicon.svg" alt="装闭" className="w-8 h-8" />
@@ -178,6 +183,17 @@ export default function LandingPage() {
                 <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
               </span>
             </button>
+            {import.meta.env.VITE_DEMO_MODE === 'true' || import.meta.env.VITE_DEMO_MODE === '1' ? (
+              <button
+                onClick={() => navigate('/project/demo-project-001/analysis')}
+                className="group relative px-8 py-4 rounded-2xl border border-blue-500/30 text-blue-300 font-semibold text-lg transition-all duration-300 hover:bg-blue-500/10 hover:border-blue-400/50 hover:text-blue-200 backdrop-blur-sm cursor-pointer"
+              >
+                <span className="flex items-center gap-2">
+                  <PlayCircle className="w-5 h-5" />
+                  在线 Demo
+                </span>
+              </button>
+            ) : null}
             <button
               onClick={() => window.open('https://github.com/fthux/RenoPit', '_blank')}
               className="px-8 py-4 rounded-2xl border border-white/10 text-gray-300 font-medium text-lg transition-all duration-300 hover:bg-white/5 hover:border-white/20 hover:text-white backdrop-blur-sm cursor-pointer inline-flex items-center gap-2"

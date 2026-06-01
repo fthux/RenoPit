@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Upload, Loader2, Trash2, FileText, Image as ImageIcon } from 'lucide-react'
+import { useToast } from '../components/Toast'
 
 const API = '/api'
 
@@ -10,6 +11,7 @@ export default function CreateProjectPage() {
   }, [])
 
   const navigate = useNavigate()
+  const { showToast } = useToast()
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
   const [selectedFiles, setSelectedFiles] = useState<File[]>([])
@@ -49,7 +51,8 @@ export default function CreateProjectPage() {
         }),
       })
       if (!createRes.ok) {
-        console.error('Failed to create project')
+        const errData = await createRes.json().catch(() => ({}))
+        showToast('error', errData.detail || '创建项目失败，请稍后重试')
         return
       }
       const p = await createRes.json()
