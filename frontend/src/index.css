@@ -71,3 +71,38 @@ html {
 .delay-400 { transition-delay: 400ms; }
 .delay-500 { transition-delay: 500ms; }
 
+/* Sweep light effect for Demo button */
+.sweep-btn {
+  position: relative;
+  overflow: hidden;
+}
+
+.sweep-btn::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 60%;
+  height: 100%;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(96, 165, 250, 0.3),
+    transparent
+  );
+  animation: sweep 3s ease-in-out infinite;
+  pointer-events: none;
+}
+
+@keyframes sweep {
+  0% {
+    left: -100%;
+  }
+  40% {
+    left: 120%;
+  }
+  100% {
+    left: 120%;
+  }
+}
+

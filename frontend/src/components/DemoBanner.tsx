@@ -16,20 +16,22 @@ export default function DemoBanner() {
   if (!isDemo) return null
 
   return (
-    <div className="sticky top-0 z-[60] bg-gradient-to-r from-blue-600/95 via-indigo-600/95 to-blue-600/95 backdrop-blur-md text-white shadow-lg shadow-blue-900/20">
-      <div className="max-w-7xl mx-auto px-4 py-2.5 flex items-center justify-center gap-3 text-sm flex-wrap">
+    <div className="sticky top-0 z-[60] bg-gradient-to-r from-blue-600/95 via-indigo-600/95 to-blue-600/95 backdrop-blur-md text-white shadow-lg shadow-blue-900/20 min-h-[42px]">
+      <div className="max-w-7xl mx-auto px-4 h-[42px] flex items-center justify-center gap-2 md:gap-3 text-xs md:text-sm flex-nowrap whitespace-nowrap overflow-hidden">
         <Info className="w-4 h-4 flex-shrink-0 opacity-80" />
-        <span>
-          🧪 当前为<strong className="font-semibold">演示模式</strong>，分析报告数据源自真实装修案例，仅供体验参考
+        <span className="truncate">
+          🧪 当前为<strong className="font-semibold">演示模式</strong>
+          <span className="hidden sm:inline">，分析报告数据源自真实装修案例，仅供体验参考</span>
         </span>
         <a
           href="https://github.com/fthux/RenoPit"
           target="_blank"
           rel="noopener noreferrer"
-          className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg bg-white/15 hover:bg-white/25 text-white text-xs font-medium transition-all hover:scale-[1.02] no-underline"
+          className="flex-shrink-0 inline-flex items-center gap-1.5 px-2 md:px-3 py-1 rounded-lg bg-white/15 hover:bg-white/25 text-white text-xs font-medium transition-all hover:scale-[1.02] no-underline"
         >
           <GitHubIcon className="w-3.5 h-3.5" />
-          体验完整功能
+          <span className="hidden sm:inline">体验完整功能</span>
+          <span className="sm:hidden">体验</span>
         </a>
       </div>
     </div>

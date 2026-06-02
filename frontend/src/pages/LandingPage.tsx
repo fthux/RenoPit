@@ -174,21 +174,23 @@ export default function LandingPage() {
 
           {/* CTA Buttons */}
           <div className="scroll-reveal delay-300 flex flex-col sm:flex-row items-center justify-center gap-3 md:gap-4">
-            <button
-              onClick={() => navigate('/projects/new')}
-              className="group relative px-8 py-4 rounded-2xl bg-white text-[#0a0a0f] font-semibold text-lg transition-all duration-300 hover:scale-[1.02] active:scale-[0.98] shadow-2xl shadow-white/20 hover:shadow-white/30 cursor-pointer"
-            >
-              <span className="flex items-center gap-2">
-                免费检测
-                <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
-              </span>
-            </button>
+            {import.meta.env.VITE_DEMO_MODE !== 'true' && import.meta.env.VITE_DEMO_MODE !== '1' ? (
+              <button
+                onClick={() => navigate('/projects/new')}
+                className="group relative px-8 py-4 rounded-2xl bg-white text-[#0a0a0f] font-semibold text-lg transition-all duration-300 hover:scale-[1.02] active:scale-[0.98] shadow-2xl shadow-white/20 hover:shadow-white/30 cursor-pointer"
+              >
+                <span className="flex items-center gap-2">
+                  免费检测
+                  <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
+                </span>
+              </button>
+            ) : null}
             {import.meta.env.VITE_DEMO_MODE === 'true' || import.meta.env.VITE_DEMO_MODE === '1' ? (
               <button
                 onClick={() => navigate('/project/demo-project-001/analysis')}
-                className="group relative px-8 py-4 rounded-2xl border border-blue-500/30 text-blue-300 font-semibold text-lg transition-all duration-300 hover:bg-blue-500/10 hover:border-blue-400/50 hover:text-blue-200 backdrop-blur-sm cursor-pointer"
+                className="sweep-btn group relative px-8 py-4 rounded-2xl border border-blue-500/30 text-blue-300 font-semibold text-lg transition-all duration-300 hover:bg-blue-500/10 hover:border-blue-400/50 hover:text-blue-200 backdrop-blur-sm cursor-pointer overflow-hidden"
               >
-                <span className="flex items-center gap-2">
+                <span className="flex items-center gap-2 relative z-10">
                   <PlayCircle className="w-5 h-5" />
                   在线 Demo
                 </span>
