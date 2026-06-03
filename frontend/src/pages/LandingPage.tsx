@@ -95,7 +95,7 @@ export default function LandingPage() {
       <DemoBanner />
 
       {/* Navbar */}
-      <header className={`fixed left-0 right-0 z-50 transition-all duration-500 ${scrolled ? 'bg-[#0a0a0f]/80 backdrop-blur-xl shadow-[0_1px_0_0_rgba(255,255,255,0.05)] will-change-transform' : 'bg-transparent'
+      <header className={`sticky left-0 right-0 z-50 transition-all duration-500 ${scrolled ? 'bg-[#0a0a0f]/80 backdrop-blur-xl shadow-[0_1px_0_0_rgba(255,255,255,0.05)] will-change-transform' : 'bg-transparent'
         }`} style={{ top: isDemo ? '42px' : '0' }}>
         <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
           <div className="flex items-center gap-2.5">
@@ -147,7 +147,7 @@ export default function LandingPage() {
       </header>
 
       {/* Hero Section */}
-      <section id="get-started" className="relative z-10 pt-24 md:pt-32 pb-16 md:pb-20 px-4 md:px-6">
+      <section id="get-started" className="relative z-10 pt-8 md:pt-16 pb-16 md:pb-20 px-4 md:px-6">
         <div className="max-w-5xl mx-auto text-center">
           {/* Badge */}
           <div className="scroll-reveal inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-white/5 border border-white/10 text-sm text-gray-400 mb-8 backdrop-blur-sm">
