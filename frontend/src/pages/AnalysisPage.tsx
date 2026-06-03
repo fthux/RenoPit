@@ -106,11 +106,12 @@ export default function AnalysisPage() {
     const hasDocs = docs && Object.keys(docs).length > 0
     const hasExtra = hasDocs && Object.values(docs).some((doc: any) => doc.extra_item_prediction)
     const hasCrossCheck = result && (result as any).cross_document_checks
+    const hasPitfalls = result.pitfalls && result.pitfalls.length > 0
     const sectionIds = [
       'section-summary',
       'section-pitfalls',
       'section-score',
-      'section-details',
+      ...(hasPitfalls ? ['section-details'] : []),
       ...(hasDocs ? ['section-contract'] : []),
       ...(hasExtra ? ['section-extra'] : []),
       ...(hasCrossCheck ? ['section-crosscheck'] : []),
@@ -218,11 +219,12 @@ export default function AnalysisPage() {
   const hasExtraPrediction = hasDocumentAnalyses && Object.values(document_analyses).some((doc: any) => doc.extra_item_prediction)
   const hasCrossCheck = result && (result as any).cross_document_checks
 
+  const hasPitfalls = pitfalls && pitfalls.length > 0
   const navItems = [
     { id: 'section-summary', Icon: ScrollText, label: '总体评价', color: 'text-teal-500' },
     { id: 'section-pitfalls', Icon: BarChart3, label: '陷阱数', color: 'text-blue-500' },
     { id: 'section-score', Icon: Award, label: '综合评分', color: 'text-amber-500' },
-    { id: 'section-details', Icon: ClipboardList, label: '问题详情', color: 'text-slate-500' },
+    ...(hasPitfalls ? [{ id: 'section-details', Icon: ClipboardList, label: '问题详情', color: 'text-slate-500' }] : []),
     ...(hasDocumentAnalyses ? [{ id: 'section-contract', Icon: FileText, label: '合同/报价单', color: 'text-violet-500' }] : []),
     ...(hasExtraPrediction ? [{ id: 'section-extra', Icon: TrendingUp, label: '增项预测', color: 'text-purple-500' }] : []),
     ...(hasCrossCheck ? [{ id: 'section-crosscheck', Icon: GitCompare, label: '交叉核查', color: 'text-indigo-500' }] : []),
@@ -485,22 +487,24 @@ medium hover:from-green-700 hover:to-emerald-600 no-underline transition-all hov
           </div>
 
           {/* Section: 问题详情 */}
-          <div id="section-details">
-            {/* Title: 问题详情 */}
-            <div className="flex items-center gap-2 mb-4">
-              <ClipboardList className="w-5 h-5 text-slate-500" />
-              <h2 className="text-lg font-semibold text-slate-800">问题详情</h2>
-              <span className="ml-2 px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-500 text-xs font-medium">{pitfalls.length} 项</span>
-            </div>
-            {/* Pitfall List */}
-            <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm mb-8">
-              <div className="divide-y divide-slate-100">
-                {pitfalls.map((item) => (
-                  <PitfallCard key={item.id} item={item} />
-                ))}
+          {hasPitfalls && (
+            <div id="section-details">
+              {/* Title: 问题详情 */}
+              <div className="flex items-center gap-2 mb-4">
+                <ClipboardList className="w-5 h-5 text-slate-500" />
+                <h2 className="text-lg font-semibold text-slate-800">问题详情</h2>
+                <span className="ml-2 px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-500 text-xs font-medium">{pitfalls.length} 项</span>
+              </div>
+              {/* Pitfall List */}
+              <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm mb-8">
+                <div className="divide-y divide-slate-100">
+                  {pitfalls.map((item) => (
+                    <PitfallCard key={item.id} item={item} />
+                  ))}
+                </div>
               </div>
             </div>
-          </div>
+          )}
 
           {/* Section: 合同/报价单风险分析 + 增项预测 */}
           {document_analyses && Object.keys(document_analyses).length > 0 && (

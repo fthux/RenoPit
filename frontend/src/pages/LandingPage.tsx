@@ -34,6 +34,7 @@ function useScrollReveal() {
 export default function LandingPage() {
   const navigate = useNavigate()
   const [scrolled, setScrolled] = useState(false)
+  const [starCount, setStarCount] = useState<number | null>(null)
   const isDemo =
     import.meta.env.VITE_DEMO_MODE === 'true' ||
     import.meta.env.VITE_DEMO_MODE === '1'
@@ -42,6 +43,13 @@ export default function LandingPage() {
 
   useEffect(() => {
     document.title = '装闭 — 站在消费者一边的AI装修闭坑分析器'
+  }, [])
+
+  useEffect(() => {
+    fetch('https://api.github.com/repos/fthux/RenoPit')
+      .then(res => res.json())
+      .then(data => setStarCount(data.stargazers_count ?? null))
+      .catch(() => { /* silently ignore */ })
   }, [])
 
   useEffect(() => {
@@ -342,9 +350,22 @@ export default function LandingPage() {
             <img src="/favicon.svg" alt="装闭" className="w-6 h-6" />
             装闭 — 站在消费者一边的AI装修闭坑分析器
           </div>
-          <p className="text-sm text-gray-600">
-            Powered by AI · 不做中立审查，只做消费者代言人
-          </p>
+          <div className="flex flex-col sm:flex-row items-center gap-2 sm:gap-4">
+            <p className="text-xs sm:text-sm text-gray-600">
+              Powered by AI · 不做中立审查，只做消费者代言人
+            </p>
+            <a
+              href="https://github.com/fthux/RenoPit"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-xs sm:text-sm px-2.5 sm:px-3 py-1.5 rounded-lg border border-white/10 bg-white/[0.03] text-gray-400 hover:text-white hover:bg-white/[0.08] hover:border-white/20 transition-all duration-300 inline-flex items-center gap-1.5"
+            >
+              <GitHubIcon className="w-3.5 sm:w-4 h-3.5 sm:h-4" />
+              Star on GitHub
+              <Star className="w-3 sm:w-3.5 h-3 sm:h-3.5 text-yellow-400" />
+              {starCount !== null ? starCount : '—'}
+            </a>
+          </div>
         </div>
       </footer>
     </div>
