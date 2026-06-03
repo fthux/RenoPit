@@ -362,8 +362,12 @@ export default function LandingPage() {
             >
               <GitHubIcon className="w-3.5 sm:w-4 h-3.5 sm:h-4" />
               Star on GitHub
-              <Star className="w-3 sm:w-3.5 h-3 sm:h-3.5 text-yellow-400" />
-              {starCount !== null ? starCount : '—'}
+              {starCount !== null && starCount >= 100 && (
+                <>
+                  <Star className="w-3 sm:w-3.5 h-3 sm:h-3.5 text-yellow-400" />
+                  {starCount}
+                </>
+              )}
             </a>
           </div>
         </div>
