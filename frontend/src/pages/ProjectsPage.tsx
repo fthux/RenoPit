@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { Plus, FolderOpen, Loader2, Trash2, Copy, Clock, CheckCircle2, AlertCircle, FileText, Image, FileWarning, ChevronLeft, ChevronRight, Ellipsis, FileCheck } from 'lucide-react'
 import type { Project } from '../types'
 import ConfirmDialog from '../components/ConfirmDialog'
+import { useToast } from '../components/Toast'
 
 const API = '/api'
 const PAGE_SIZE = 8
@@ -21,6 +22,7 @@ export default function ProjectsPage() {
   const [totalPages, setTotalPages] = useState(1)
   const navigate = useNavigate()
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const { showToast } = useToast()
 
   const fetchProjects = useCallback(async (p: number) => {
     try {
@@ -91,16 +93,26 @@ export default function ProjectsPage() {
       if (res.ok) {
         setCopyConfirm(null)
         await fetchProjects(page)
+      } else {
+        setCopyConfirm(null)
+        const errData = await res.json().catch(() => ({}))
+        showToast('error', errData.detail || 'PDF 下载失败，请稍后重试')
       }
     } catch (err) { console.error(err) }
   }
 
   async function deleteProject(id: string) {
     try {
-      await fetch(`${API}/projects/${id}`, { method: 'DELETE' })
-      setDeleteConfirm(null)
-      // 删除后重新请求 API 获取当前页数据，保证分页一致性
-      await fetchProjects(page)
+      const res = await fetch(`${API}/projects/${id}`, { method: 'DELETE' })
+      if (res.ok) {
+        setDeleteConfirm(null)
+        // 删除后重新请求 API 获取当前页数据，保证分页一致性
+        await fetchProjects(page)
+      } else {
+        setDeleteConfirm(null)
+        const errData = await res.json().catch(() => ({}))
+        showToast('error', errData.detail || 'PDF 下载失败，请稍后重试')
+      }
     } catch (err) { console.error(err) }
   }
 
@@ -179,13 +191,13 @@ export default function ProjectsPage() {
               <span className="text-sm text-slate-500">
                 共 {total} 个项目 · 第 {page}/{totalPages} 页
               </span>
-              <button
+              {(import.meta.env.VITE_DEMO_MODE !== 'true' && import.meta.env.VITE_DEMO_MODE !== '1') && (<button
                 onClick={() => navigate('/projects/new')}
                 className="flex items-center gap-2 px-4 py-2 bg-white border-2 border-slate-200 rounded-xl text-slate-600 font-medium text-sm hover:border-blue-300 hover:text-blue-600 hover:bg-blue-50/30 transition-all duration-300 active:scale-[0.97]"
               >
                 <Plus className="w-4 h-4" />
                 新建项目
-              </button>
+              </button>)}
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

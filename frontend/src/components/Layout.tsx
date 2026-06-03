@@ -33,7 +33,7 @@ export default function Layout() {
               </span>
             </Link>
             <nav className="flex items-center gap-1">
-              {location.pathname !== '/projects/new' && (
+              {location.pathname !== '/projects/new' && (import.meta.env.VITE_DEMO_MODE !== 'true' && import.meta.env.VITE_DEMO_MODE !== '1') && (
                 <Link
                   to="/projects/new"
                   className="flex items-center gap-1.5 px-4 py-2 bg-gradient-to-r from-blue-600 to-blue-500 text-white rounded-xl text-sm font-medium hover:from-blue-700 hover:to-blue-600 no-underline transition-all hover:scale-[1.02] active:scale-[0.98] shadow-lg shadow-blue-500/20 mr-2"

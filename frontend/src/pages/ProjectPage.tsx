@@ -419,13 +419,13 @@ export default function ProjectPage() {
       <div className="bg-white rounded-2xl border border-slate-200 p-5 mb-8 shadow-sm">
         {/* Button Group */}
         <div className="flex flex-wrap items-center gap-3">
-          <label className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-medium cursor-pointer transition-all ${uploading || isAnalyzing ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'bg-slate-100 text-slate-700 hover:bg-slate-200 hover:scale-[1.02] active:scale-[0.98]'}`}>
+          {(import.meta.env.VITE_DEMO_MODE !== 'true' && import.meta.env.VITE_DEMO_MODE !== '1') && (<label className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-medium cursor-pointer transition-all ${uploading || isAnalyzing ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'bg-slate-100 text-slate-700 hover:bg-slate-200 hover:scale-[1.02] active:scale-[0.98]'}`}>
             <Upload className="w-4 h-4" />
             {uploading ? '上传中...' : isAnalyzing ? '分析中...' : '上传文件'}
             <input type="file" multiple accept=".pdf,.png,.jpg,.jpeg,.webp,.txt,.docx,.md" onChange={handleFileUpload} disabled={uploading || isAnalyzing} className="hidden" />
-          </label>
+          </label>)}
 
-          {isAnalyzing ? (
+          {(import.meta.env.VITE_DEMO_MODE !== 'true' && import.meta.env.VITE_DEMO_MODE !== '1') && (isAnalyzing ? (
             <button onClick={stopAnalysis} disabled={stopping}
               className="flex items-center gap-2 px-5 py-2.5 bg-red-600 text-white rounded-xl text-sm font-medium hover:bg-red-700 disabled:opacity-40 transition-all hover:scale-[1.02] active:scale-[0.98] shadow-lg shadow-red-500/20">
               <Square className="w-4 h-4" /> {stopping ? '停止中...' : '停止分析'}
@@ -448,7 +448,7 @@ export default function ProjectPage() {
                 <><Play className="w-4 h-4" /> 开始分析</>
               )}
             </button>
-          )}
+          ))}
 
           {project.status === 'completed' && (
             <Link to={`/project/${projectId}/analysis`} className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-green-600 to-emerald-500 text-white rounded-xl text-sm font-medium hover:from-green-700 hover:to-emerald-600 no-underline transition-all hover:scale-[1.02] active:scale-[0.98] shadow-lg shadow-green-500/20">

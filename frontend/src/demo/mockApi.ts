@@ -88,10 +88,10 @@ const mockHandlers: MockHandler[] = [
   // -----------------------------------------------------------------------
   // GET /api/projects/:id — get project detail
   // -----------------------------------------------------------------------
-  (url) => {
+  (url, options) => {
     const path = normalizePath(url)
     const params = path && matchPath(path, '/projects/:id')
-    if (params) {
+    if (params && (!options || options.method === undefined || options.method === 'GET')) {
       return jsonResponse(DEMO_PROJECT)
     }
     return null
@@ -174,9 +174,9 @@ const mockHandlers: MockHandler[] = [
   // -----------------------------------------------------------------------
   (url, options) => {
     const path = normalizePath(url)
-    const params = path && matchPath(path, '/projects/:id')
+    const params = path && matchPath(path, '/projects/:id');
     if (params && options?.method === 'DELETE') {
-      return jsonResponse({ success: true })
+      return jsonResponse({ detail: 'Demo 模式下不支持删除项目，请去GitHub仓库下载源代码，启动后端服务后重试。' }, 400)
     }
     return null
   },
@@ -188,7 +188,7 @@ const mockHandlers: MockHandler[] = [
     const path = normalizePath(url)
     const params = path && matchPath(path, '/projects/:id/duplicate')
     if (params && options?.method === 'POST') {
-      return jsonResponse({ success: true })
+      return jsonResponse({ detail: 'Demo 模式下不支持复制项目，请去GitHub仓库下载源代码，启动后端服务后重试。' }, 400)
     }
     return null
   },
