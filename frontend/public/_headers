@@ -1,3 +1,9 @@
 /favicon.svg
   Content-Type: image/svg+xml
   Content-Disposition: inline
+
+/assets/*.js
+  Content-Type: application/javascript
+
+/assets/*.css
+  Content-Type: text/css
