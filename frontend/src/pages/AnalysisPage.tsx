@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useParams, Link } from 'react-router-dom'
-import { ArrowLeft, Loader2, AlertTriangle, Zap, AlertCircle, Info, Download, ChevronRight, Shield, ShieldCheck, FileText, DollarSign, FileSignature, PlusCircle, ScrollText, BarChart3, Award, ClipboardList, TrendingUp, GitCompare, ArrowUpToLine } from 'lucide-react'
+import { ArrowLeft, Loader2, AlertTriangle, Zap, AlertCircle, Info, Download, ChevronRight, Shield, ShieldCheck, FileText, DollarSign, FileSignature, PlusCircle, ScrollText, BarChart3, Award, ClipboardList, TrendingUp, GitCompare, ArrowUpToLine, Menu } from 'lucide-react'
 import type { AnalysisResult, PitfallItem, PitfallSeverity } from '../types'
 import ExtraPredictionPanel from '../components/ExtraPredictionPanel'
 import CrossCheckPanel from '../components/CrossCheckPanel'
@@ -25,6 +25,7 @@ export default function AnalysisPage() {
   const [activeSection, setActiveSection] = useState('')
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [showFloatingButtons, setShowFloatingButtons] = useState(false)
+  const [showMobileNav, setShowMobileNav] = useState(false)
   const observerRef = useRef<IntersectionObserver | null>(null)
   const { showToast } = useToast()
 
@@ -296,26 +297,6 @@ medium hover:from-green-700 hover:to-emerald-600 no-underline transition-all hov
         </div>
       )}
 
-      {/* Mobile: Horizontal scrollable nav */}
-      <nav className="lg:hidden -mx-4 px-4 mb-6 overflow-x-auto scrollbar-hide sticky top-0 z-10 bg-white/95 backdrop-blur-sm border-b border-slate-100 py-2.5">
-        <div className="flex items-center gap-1 min-w-max">
-          {navItems.map((item) => {
-            const isActive = activeSection === item.id
-            const Icon = item.Icon
-            return (
-              <button
-                key={item.id}
-                onClick={() => scrollToSection(item.id)}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition-all duration-200 cursor-pointer ${isActive ? 'bg-slate-100 text-slate-800 shadow-sm' : 'text-slate-400 hover:text-slate-600 hover:bg-slate-50'
-                  }`}
-              >
-                <Icon className={`w-3.5 h-3.5 ${isActive ? item.color : 'text-slate-400'}`} />
-                {item.label}
-              </button>
-            )
-          })}
-        </div>
-      </nav>
 
       {/* Desktop: Flex layout with sticky sidebar */}
       <div className={`flex ${sidebarCollapsed ? 'gap-4' : 'gap-8'}`}>
@@ -555,6 +536,20 @@ medium hover:from-green-700 hover:to-emerald-600 no-underline transition-all hov
 
       {/* Floating action buttons */}
       <div className={`fixed bottom-8 right-8 z-40 flex flex-col items-center gap-3 transition-all duration-300 ${showFloatingButtons ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4 pointer-events-none'}`}>
+        {/* Section navigation button (mobile only) */}
+        <div className="relative group lg:hidden">
+          <button
+            onClick={() => setShowMobileNav(true)}
+            className="w-11 h-11 rounded-full bg-gradient-to-r from-slate-700 to-slate-600 text-white shadow-lg shadow-slate-500/30 flex items-center justify-center hover:scale-110 active:scale-95 transition-all duration-200 cursor-pointer"
+            title="跳转到..."
+          >
+            <Menu className="w-5 h-5" />
+          </button>
+          <span className="absolute right-full mr-3 top-1/2 -translate-y-1/2 px-2.5 py-1.5 bg-slate-800 text-white text-xs font-medium rounded-lg whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none shadow-lg">
+            跳转到
+          </span>
+        </div>
+
         {/* Download report button */}
         <div className="relative group">
           <button
@@ -584,6 +579,52 @@ medium hover:from-green-700 hover:to-emerald-600 no-underline transition-all hov
           </span>
         </div>
       </div>
+
+      {/* Mobile: Bottom sheet navigation */}
+      {showMobileNav && (
+        <div className="fixed inset-0 z-50 lg:hidden" onClick={() => setShowMobileNav(false)}>
+          {/* Backdrop */}
+          <div className="absolute inset-0 bg-black/40 transition-opacity" />
+          {/* Sheet */}
+          <div
+            className="absolute bottom-0 left-0 right-0 bg-white rounded-t-2xl shadow-2xl max-h-[55vh] overflow-y-auto animate-slide-up"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Handle bar */}
+            <div className="flex justify-center pt-3 pb-1">
+              <div className="w-10 h-1 rounded-full bg-slate-300" />
+            </div>
+            {/* Header */}
+            <div className="px-5 py-3 border-b border-slate-100">
+              <h3 className="text-sm font-semibold text-slate-700">跳转到</h3>
+            </div>
+            {/* Nav items list */}
+            <div className="py-2">
+              {navItems.map((item) => {
+                const isActive = activeSection === item.id
+                const Icon = item.Icon
+                return (
+                  <button
+                    key={item.id}
+                    onClick={() => {
+                      scrollToSection(item.id)
+                      setShowMobileNav(false)
+                    }}
+                    className={`w-full flex items-center gap-3 px-5 py-3.5 text-sm transition-colors cursor-pointer ${isActive ? 'bg-blue-50 text-blue-700 font-medium' : 'text-slate-600 hover:bg-slate-50'
+                      }`}
+                  >
+                    <Icon className={`w-4 h-4 ${isActive ? item.color : 'text-slate-400'}`} />
+                    <span className="flex-1 text-left">{item.label}</span>
+                    {isActive && (
+                      <span className="text-xs text-blue-500 font-medium">当前</span>
+                    )}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
