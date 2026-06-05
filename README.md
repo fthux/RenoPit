@@ -2,23 +2,22 @@
 
 <img src="frontend/public/favicon.svg" alt="装闭 Logo" width="120" />
 
-# 🏠 装闭
-### RenoPit <sub><sup>/ˈriːnoʊ pɪt/</sup></sub>
+# 装闭 - RenoPit
 
-取自 **Reno**vation（装修）+ **Pit**fall（陷阱），专为装修消费者打造的 AI 避坑引擎
-
-一个**完全站在消费者立场**的 AI 审查工具，上传装修设计图和合同文档，自动识别不合理设计、过度装修和卫生死角等"装修智商税"
+专为装修消费者打造的 AI 避坑引擎
 
 <em>An AI-powered consumer advocate that reviews renovation plans & contracts, exposing overpriced pitfalls</em>
 
 [![Docker](https://img.shields.io/badge/Docker-Build-2496ED?style=flat-square&logo=docker&logoColor=white)](https://hub.docker.com/)
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/666ghj/MiroFish)
 
+> RenoPit <sub><sup>/ˈriːnoʊ pɪt/</sup></sub> 取自 **Reno**vation（装修）+ **Pit**fall（陷阱）
+
 </div>
 
 ---
 
-## ⚡ 项目概述
+## 项目概述
 
 **装闭（RenoPit）** 是一款面向装修消费者的 AI 审查引擎。你只需上传房屋设计图（户型图、效果图等）和装修相关文档（合同、报价单），系统便会利用多模态 AI 进行批判性分析——自动框出图纸上的卫生死角、揭露报价单中的过度装修、指出合同中的隐形陷阱，并生成一份**带图像标注的在线可视化报告**和可下载的 PDF。
 
@@ -36,11 +35,11 @@
 
 从设计图审查到合同报价分析，我们让每一次装修决策都有据可依。
 
-## 🌐 在线体验
+## 在线体验
 
 欢迎访问在线 Demo 演示环境，体验我们为你准备的一次装修图纸审查与合同避坑分析：[https://renopit.fthux.com](https://renopit.fthux.com/)
 
-## 📸 系统截图
+## 系统截图
 
 ### 前端
 
@@ -124,14 +123,14 @@
 ![健康检查](screenshots/backend/health.png)
 </details>
 
-## 🔄 工作流程
+## 工作流程
 
 1. **上传素材**：拖拽上传多张设计图（JPG/PNG/WEBP）+ 装修文档（合同/报价单 TXT/MD/DOCX/PDF）+ 文字补充说明（至少一项）
 2. **AI 分析**：多模态大模型识别图纸 + 本地知识库匹配核心坑位 + 联网搜索最新套路，输出含 bbox 坐标的结构化批判报告
 3. **在线报告**：分析完成后自动渲染可视化报告——原图上叠加红色标注框，点击即可查看每个问题的批判详情、套路揭露和替代方案
 4. **下载 PDF**：点击按钮一键生成 PDF 报告（含中文），随时分享给装修公司"对峙"
 
-## 🚀 快速开始
+## 快速开始
 
 ### 前提要求
 
@@ -156,9 +155,11 @@ docker-compose up -d
 | 服务 | 地址 |
 |------|------|
 | 前端界面 | http://localhost:3000 |
-| 后端 API 文档 | http://localhost:8000/docs |
+| 后端 API 文档 (Swagger) | http://localhost:8000/docs |
+| 后端 API 文档 (ReDoc) | http://localhost:8000/redoc |
+| 健康检查 | http://localhost:8000/health |
 
-## 📄 致谢
+## 致谢
 
 本项目灵感来源于装修过程中踩过的坑。感谢所有在装修中分享避坑经验的消费者，你们的每一次分享都在推动行业透明化。
 
