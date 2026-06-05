@@ -23,6 +23,7 @@ HEALTH_DASHBOARD_HTML = """<!DOCTYPE html>
 <head>
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
   <title>RenoPit — 系统健康检查</title>
   <style>
     :root {
@@ -150,6 +151,52 @@ HEALTH_DASHBOARD_HTML = """<!DOCTYPE html>
     @keyframes spin { to { transform: rotate(360deg); } }
 
     .latency { font-variant-numeric: tabular-nums; color: var(--text-secondary); font-size: 12px; }
+
+    /* ===== Mobile Card Layout ===== */
+    .mobile-cards { display: none; }
+
+    .check-card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 14px 16px;
+    }
+    .check-card-header {
+      display: flex; justify-content: space-between; align-items: center;
+      margin-bottom: 10px; gap: 8px;
+    }
+    .check-card-name { font-weight: 600; font-size: 14px; }
+    .check-card-body { display: flex; flex-direction: column; gap: 8px; }
+    .check-card-row { display: flex; flex-direction: column; gap: 2px; }
+    .check-card-label { font-size: 11px; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.3px; }
+    .check-card-value { font-size: 13px; word-break: break-all; }
+
+    /* ===== Mobile Responsive ===== */
+    @media (max-width: 768px) {
+      .container { padding: 16px 12px; }
+      .header { padding: 16px 12px; margin-bottom: 16px; }
+      .header h1 { font-size: 20px; }
+      .header .subtitle { font-size: 13px; }
+      .header-row { flex-direction: column; gap: 10px; }
+      .section { margin-bottom: 20px; }
+      .section-title { font-size: 14px; }
+
+      .card table { display: none; }
+      .mobile-cards { display: flex; flex-direction: column; gap: 10px; }
+
+      .refresh-btn { padding: 6px 14px; font-size: 13px; }
+      .status-badge { font-size: 12px; padding: 4px 12px; }
+      .footer { padding: 16px 12px; font-size: 11px; }
+    }
+
+    @media (max-width: 480px) {
+      .header h1 { font-size: 18px; }
+      .container { padding: 12px 8px; }
+      .header { padding: 12px 8px; margin-bottom: 12px; }
+      .section { margin-bottom: 16px; }
+      .check-card { padding: 12px 14px; }
+      .extra-tag { font-size: 10px; padding: 1px 6px; }
+    }
   </style>
 </head>
 <body>
@@ -223,6 +270,28 @@ HEALTH_DASHBOARD_HTML = """<!DOCTYPE html>
       `;
     }
 
+    function renderCheckCard(check) {
+      const icon = STATUS_ICON[check.status] || '❓';
+      const label = STATUS_LABEL[check.status] || check.status;
+      const latencyHtml = check.latency_ms > 0 ? `<span class="latency">${check.latency_ms}ms</span>` : '';
+      const extraHtml = renderExtra(check.name, check.extra);
+      return `
+        <div class="check-card">
+          <div class="check-card-header">
+            <span class="check-card-name">${icon} ${check.name}</span>
+            <span class="check-status ${check.status}">${label}${latencyHtml ? ' ' + latencyHtml : ''}</span>
+          </div>
+          <div class="check-card-body">
+            <div class="check-card-row">
+              <span class="check-card-label">详情</span>
+              <span class="check-card-value">${check.detail || '—'}</span>
+            </div>
+            ${extraHtml ? '<div class="check-card-row"><span class="check-card-label">诊断数据</span><div class="check-card-value">' + extraHtml + '</div></div>' : ''}
+          </div>
+        </div>
+      `;
+    }
+
     function renderSection(title, checks) {
       return `
         <div class="section">
@@ -232,6 +301,7 @@ HEALTH_DASHBOARD_HTML = """<!DOCTYPE html>
               <thead><tr><th style="width:200px">检查项</th><th style="width:120px">状态</th><th>详情</th><th>诊断数据</th></tr></thead>
               <tbody>${checks.map(renderCheck).join('')}</tbody>
             </table>
+            <div class="mobile-cards">${checks.map(renderCheckCard).join('')}</div>
           </div>
         </div>
       `;
