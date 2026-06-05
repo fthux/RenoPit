@@ -106,7 +106,8 @@ export default function AnalysisPage() {
     const docs = result.document_analyses
     const hasDocs = docs && Object.keys(docs).length > 0
     const hasExtra = hasDocs && Object.values(docs).some((doc: any) => doc.extra_item_prediction)
-    const hasCrossCheck = result && (result as any).cross_document_checks
+    const crossChecks = result && (result as any).cross_document_checks
+    const hasCrossCheck = crossChecks && crossChecks.discrepancies && crossChecks.discrepancies.length > 0
     const hasPitfalls = result.pitfalls && result.pitfalls.length > 0
     const sectionIds = [
       'section-summary',
@@ -218,7 +219,8 @@ export default function AnalysisPage() {
 
   const hasDocumentAnalyses = document_analyses && Object.keys(document_analyses).length > 0
   const hasExtraPrediction = hasDocumentAnalyses && Object.values(document_analyses).some((doc: any) => doc.extra_item_prediction)
-  const hasCrossCheck = result && (result as any).cross_document_checks
+  const crossChecks = result && (result as any).cross_document_checks
+  const hasCrossCheck = crossChecks && crossChecks.discrepancies && crossChecks.discrepancies.length > 0
 
   const hasPitfalls = pitfalls && pitfalls.length > 0
   const navItems = [
