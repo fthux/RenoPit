@@ -13,6 +13,8 @@
 
 > RenoPit <sub><sup>/ˈriːnoʊ pɪt/</sup></sub> 取自 **Reno**vation（装修）+ **Pit**fall（陷阱）
 
+<img src="screenshots/renopit-promo.png" alt="装闭- RenoPit" />
+
 </div>
 
 ---

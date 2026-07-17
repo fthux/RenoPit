@@ -28,3 +28,4 @@ backend/.venv/
 
 # Docker
 docker-compose.override.yml
+.codegraph/
