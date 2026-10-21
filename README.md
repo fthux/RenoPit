@@ -9,7 +9,7 @@
 <em>An AI-powered consumer advocate that reviews renovation plans & contracts, exposing overpriced pitfalls</em>
 
 [![Docker](https://img.shields.io/badge/Docker-Build-2496ED?style=flat-square&logo=docker&logoColor=white)](https://hub.docker.com/)
-[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/666ghj/MiroFish)
+[![Ask DeepWiki](./deepwiki-badge.svg)](https://deepwiki.com/666ghj/MiroFish)
 
 > RenoPit <sub><sup>/ˈriːnoʊ pɪt/</sup></sub> 取自 **Reno**vation（装修）+ **Pit**fall（陷阱）
 
